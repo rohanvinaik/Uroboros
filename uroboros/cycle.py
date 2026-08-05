@@ -35,7 +35,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .drive import det, enumerate_targets
+from .drive import changed_targets, det, enumerate_targets
 from .preflight import check as preflight_check, report as preflight_report
 from .synth import _function_source, synthesize_inputs
 
@@ -152,18 +152,20 @@ def main():
     ap.add_argument("--no-model", action="store_true", help="deterministic only — skip the model residual step")
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--check", action="store_true", help="verify deps (Detective/Wesker, Ollama, model) and exit")
+    ap.add_argument("--diff", nargs="?", const="HEAD", default=None, metavar="BASE",
+                    help="crawl ONLY functions changed since BASE (default HEAD) — churn before a push")
     a = ap.parse_args()
 
     if a.check:
         return 0 if preflight_report(a.model) else 1
-    if not a.path:
-        ap.error("a path is required (or use --check)")
+    if not a.path and not a.diff:
+        ap.error("a path is required (or use --diff / --check)")
     if not preflight_check(a.model)["detective/wesker"][0]:
         print("✗ Detective not found — run `uroboros --check` for setup help.", file=sys.stderr)
         return 1
     root = Path(a.project_root).resolve()
 
-    _, rerr = det("regime", _regime_target(a.path), root)
+    _, rerr = det("regime", "" if a.diff else _regime_target(a.path), root)
     if rerr and rerr != "no-json":
         print(f"regime refused: {rerr}\n  run `detective regime --migrate --project-root {root}`", file=sys.stderr)
         return 1
@@ -172,9 +174,17 @@ def main():
     if not a.no_model and not use_model:
         print("⚠ Ollama not reachable — deterministic pass only (pure residuals left unclosed).\n")
 
-    targets = [a.path] if "::" in a.path else list(enumerate_targets(Path(a.path).resolve(), root))
+    if a.diff:
+        targets = list(changed_targets(root, a.diff))
+        if not targets:
+            print(f"no changed functions since {a.diff} — nothing to crawl.")
+            return 0
+    elif "::" in a.path:
+        targets = [a.path]
+    else:
+        targets = list(enumerate_targets(Path(a.path).resolve(), root))
     print(f"crawl: {len(targets)} function(s) · model={'off' if not use_model else a.model.split(':')[0]} "
-          f"· decompose={'apply' if a.apply else 'report'}\n")
+          f"· decompose={'apply' if a.apply else 'report'}{f' · diff={a.diff}' if a.diff else ''}\n")
     print(f"{'function':<32} {'state':<16} {'kill':>7} {'model':>5} {'c-eq':>5} {'seam':>6}")
     print("-" * 78)
 

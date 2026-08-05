@@ -11,7 +11,12 @@ import ast
 import pytest
 
 from uroboros.cycle import _regime_target
-from uroboros.drive import enumerate_targets
+from uroboros.drive import (
+    _changed_line_ranges,
+    _functions_in_ranges,
+    changed_targets,
+    enumerate_targets,
+)
 from uroboros.synth import (
     _base_type,
     _mine_literals,
@@ -117,6 +122,56 @@ class TestEnumerateTargets:
         (tmp_path / "conftest.py").write_text("def fixture_thing():\n    pass\n")
         targets = list(enumerate_targets(tmp_path, tmp_path))
         assert targets == ["mod.py::alpha", "mod.py::beta"]        # order, no dunder/nested/tests
+
+
+# ── diff-mode pure core — parse a diff, map ranges to functions ───────────────
+class TestChangedLineRanges:
+    def test_keeps_new_side_span_strips_b_prefix(self):
+        diff = "+++ b/pkg/mod.py\n@@ -10,0 +11,3 @@ def ctx\n+x\n+y\n+z\n"
+        assert _changed_line_ranges(diff) == {"pkg/mod.py": [(11, 13)]}
+
+    def test_omitted_count_means_one_line(self):
+        diff = "+++ b/m.py\n@@ -5 +7 @@\n+one\n"
+        assert _changed_line_ranges(diff) == {"m.py": [(7, 7)]}
+
+    def test_drops_pure_deletion_and_dev_null(self):
+        # a deletion-only hunk (new-count 0) maps to no current line; /dev/null is a
+        # removed file — neither should appear in the crawl set
+        diff = ("+++ b/keep.py\n@@ -20 +24,0 @@\n-gone\n"
+                "+++ /dev/null\n@@ -1,2 +0,0 @@\n-def dead(): pass\n")
+        assert _changed_line_ranges(diff) == {}
+
+
+class TestFunctionsInRanges:
+    SRC = "def a():\n    pass\n\ndef b():\n    x = 1\n    return x\n\ndef __hidden():\n    pass\n"
+
+    def test_only_functions_overlapping_a_range(self):
+        assert _functions_in_ranges(self.SRC, [(5, 5)]) == ["b"]   # line 5 is inside b
+        assert _functions_in_ranges(self.SRC, [(1, 1)]) == ["a"]
+
+    def test_skips_dunder_even_when_in_range(self):
+        assert _functions_in_ranges(self.SRC, [(8, 8)]) == []      # __hidden excluded
+
+    def test_no_overlap_yields_nothing(self):
+        assert _functions_in_ranges(self.SRC, [(3, 3)]) == []      # blank gap between a and b
+
+    def test_unparseable_source_is_empty_not_a_crash(self):
+        assert _functions_in_ranges("def oops(:\n", [(1, 1)]) == []
+
+
+class TestChangedTargets:
+    def test_end_to_end_crawls_only_the_changed_function(self, tmp_path):
+        import subprocess
+
+        (tmp_path / "calc.py").write_text("def add(a, b):\n    return a + b\n\n\ndef same(x):\n    return x\n")
+        run = lambda *args: subprocess.run(["git", "-C", str(tmp_path), *args], capture_output=True)
+        run("init"); run("-c", "user.email=x@x", "-c", "user.name=x", "add", "-A")
+        run("-c", "user.email=x@x", "-c", "user.name=x", "commit", "-m", "base")
+        # change ONLY `add`; `same` is untouched
+        (tmp_path / "calc.py").write_text(
+            "def add(a, b):\n    if a < 0:\n        return b\n    return a + b\n\n\ndef same(x):\n    return x\n"
+        )
+        assert list(changed_targets(tmp_path, "HEAD")) == ["calc.py::add"]
 
 
 if __name__ == "__main__":

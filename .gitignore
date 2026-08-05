@@ -4,5 +4,4 @@ __pycache__/
 .venv/
 .detective/
 .wesker/
-tests/detective/
 .pytest_cache/

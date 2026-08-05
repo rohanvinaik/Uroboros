@@ -7,6 +7,7 @@ knows how to speak to the CLI and how to find work.
 """
 import ast
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -48,4 +49,84 @@ def enumerate_targets(path: Path, root: Path):
         for node in tree.body:
             if isinstance(node, ast.FunctionDef) and not node.name.startswith("__"):
                 yield f"{rel}::{node.name}"
+
+
+# ── diff-mode: the pitched "churn before push" crawl set ──────────────────────
+# Split so the PURE core is pinnable and the impurity is one thin shell: git +
+# filesystem reads live only in `changed_targets`; the parse and the range→func
+# map are pure functions of their arguments (Detective can pin them outright).
+
+_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+
+def _changed_line_ranges(diff_text: str) -> dict:
+    """Parse `git diff` unified output into {relpath: [(start, end), ...]} on the
+    NEW side — the lines that now exist after the change, which is what maps onto
+    a current function. Pure: a function of the diff text alone.
+
+    Only new-side spans are kept; a pure deletion (new-count 0) maps to no current
+    line, so it is dropped — you cannot pin a function that the diff removed.
+    """
+    ranges: dict[str, list] = {}
+    current = None
+    for line in diff_text.splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].strip()
+            current = None if path == "/dev/null" else (path[2:] if path.startswith("b/") else path)
+        elif current and line.startswith("@@"):
+            m = _HUNK.match(line)
+            if not m:
+                continue
+            start = int(m.group(1))
+            count = int(m.group(2)) if m.group(2) is not None else 1
+            if count > 0:
+                ranges.setdefault(current, []).append((start, start + count - 1))
+    return ranges
+
+
+def _functions_in_ranges(source: str, ranges: list) -> list:
+    """Top-level function names whose line span intersects any changed range, in
+    source order. Pure: AST over the source text, no I/O. Skips dunders — the
+    crawl refactors named source, not `__init__`-style hooks.
+    """
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return []
+    out = []
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and not node.name.startswith("__"):
+            lo, hi = node.lineno, (node.end_lineno or node.lineno)
+            if any(lo <= end and start <= hi for start, end in ranges):
+                out.append(node.name)
+    return out
+
+
+def changed_targets(root: Path, base: str = "HEAD"):
+    """The changed-function crawl set: `git diff <base>` → the functions those
+    hunks touch, as 'relpath::func'. The ONE impure shell — it runs git and reads
+    files — over the two pure helpers above. Skips test files, like the file crawl.
+
+    `base` defaults to HEAD (uncommitted work: staged + unstaged). Pass a ref like
+    'main' to crawl everything a branch changed before a push.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "diff", "--unified=0", base, "--", "*.py"],
+            capture_output=True, text=True, timeout=CONVERGE_WALL,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    ranges = _changed_line_ranges(proc.stdout)
+    for rel, spans in ranges.items():
+        name = Path(rel).name
+        if name.startswith("test_") or name == "conftest.py":
+            continue
+        src_path = root / rel
+        try:
+            source = src_path.read_text()
+        except OSError:
+            continue
+        for func in _functions_in_ranges(source, spans):
+            yield f"{rel}::{func}"
 
