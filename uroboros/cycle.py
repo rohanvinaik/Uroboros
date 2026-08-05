@@ -44,6 +44,17 @@ MODEL_PASSES = 3     # max synthesize->converge rounds before we call a gap uncl
 CALL_WALL = 90       # seconds per model call — one slow generation can't stall the crawl
 
 
+def _regime_target(path: str) -> str:
+    """The target to hand `detective regime`, given a crawl path.
+
+    Pass the FULL `file.py::func` through — regime accepts a target and adds
+    target-specific facts. A BARE `file.py` is refused ("target must be
+    file.py::function"), which once broke the documented single-function form.
+    A dir/whole-file path (no `::`) resolves the whole repo with no target.
+    """
+    return path if "::" in path else ""
+
+
 def _ollama_up() -> bool:
     import urllib.request
     try:
@@ -152,11 +163,7 @@ def main():
         return 1
     root = Path(a.project_root).resolve()
 
-    # Pass the FULL file.py::func to regime (it accepts a target and adds target-specific
-    # facts); a bare file.py is REFUSED by Detective ("target must be file.py::function"),
-    # which broke the documented single-function form. A dir/whole-file target ("::" absent)
-    # resolves the whole repo with no target.
-    _, rerr = det("regime", a.path if "::" in a.path else "", root)
+    _, rerr = det("regime", _regime_target(a.path), root)
     if rerr and rerr != "no-json":
         print(f"regime refused: {rerr}\n  run `detective regime --migrate --project-root {root}`", file=sys.stderr)
         return 1

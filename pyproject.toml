@@ -23,3 +23,6 @@ dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
 include = ["uroboros*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
