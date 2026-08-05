@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uroboros-refactor"
+version = "0.1.0"
+description = "Set-and-forget refactor crawler — drives Detective (over Wesker) until code is pure."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "detective-spec>=0.10.2",   # the CLI Uroboros drives (pulls Wesker, the mutation engine)
+]
+# The model step also needs Ollama running + a small model pulled — an EXTERNAL runtime
+# dependency, not a pip one. `uroboros --check` verifies it; absent, the crawl runs
+# deterministically and leaves pure gaps unclosed.
+
+[project.scripts]
+uroboros = "uroboros.cycle:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["uroboros*"]
