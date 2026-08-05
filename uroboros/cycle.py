@@ -152,7 +152,11 @@ def main():
         return 1
     root = Path(a.project_root).resolve()
 
-    _, rerr = det("regime", a.path.split("::")[0] if "::" in a.path else "", root)
+    # Pass the FULL file.py::func to regime (it accepts a target and adds target-specific
+    # facts); a bare file.py is REFUSED by Detective ("target must be file.py::function"),
+    # which broke the documented single-function form. A dir/whole-file target ("::" absent)
+    # resolves the whole repo with no target.
+    _, rerr = det("regime", a.path if "::" in a.path else "", root)
     if rerr and rerr != "no-json":
         print(f"regime refused: {rerr}\n  run `detective regime --migrate --project-root {root}`", file=sys.stderr)
         return 1
