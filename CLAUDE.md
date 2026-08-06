@@ -31,13 +31,20 @@ one step. The whole value is packaging a rigorous loop so it runs itself.
 6. **Verify with the receipt.** A kill count with a red suite is worthless. The generated tests are
    ordinary pytest; green pytest is the only proof.
 
-## Current state (2026-08-05)
+## Current state (2026-08-06)
 
 - **Built + working:** the full cycle — regime → diagnose → decompose → converge → guarded model
-  step → three-bucket routing (pinned / needs-fixture / unclosed). Runs as `uroboros`, `--check`
-  preflight, `--no-model` degrade. Model default `qwen3:4b-instruct` (bake-off winner).
-- **Pending:** Tier-2 (model *proposes* equivalence arguments for candidate-equivalents, batched
-  for `flag`); diff-mode (`git diff` → changed functions = "churn before push"); fleet parallelism.
+  step → review-bucket routing. Runs as `uroboros`, `--check` preflight, `--no-model` degrade,
+  `file.py::func`. Model default `qwen3:4b-instruct` (bake-off winner).
+- **The model step is now DO-THIS-driven** (`nextstep.derive_next_step`): a faithful port of
+  Detective's own `_derive_inputs`/`_boundary_hint` re-derives the typed next-step from converge
+  JSON; the model produces the `--input` that step asks for, kind by kind. This subsumes Tier-2 —
+  candidate-equivalents surface as `boundary` (model tries to kill, gated by `--tier2`) or
+  `internal` (certified abstention, never spin). Buckets: pinned / needs-fixture / **needs-input**
+  (`test`/`author` kinds — you supply the object/value) / unclosed.
+- **diff-mode:** `uroboros --diff [BASE]` crawls only functions changed since BASE ("churn before
+  a push"). Built.
+- **Pending:** fleet parallelism (the crawl is still serial).
 
 ## How to run
 

@@ -23,7 +23,11 @@ in `CLAUDE.md`). The intelligence is Detective's; Uroboros just cycles it.
    the one model call is `synth.synthesize_inputs`; the CLI plumbing is `drive.det`.
 3. Understand the data contract before changing routing: Uroboros keys off `converge --json` fields
    (`functionally_complete`, `line_complete`, `missing_lines`, `environment_gated`,
-   `survivor_report.verdicts`). It does NOT parse the human `DO THIS:` prose.
+   `survivor_report.verdicts`, `param_names`, `missing_line_guards`). It never scrapes the human
+   `DO THIS:` prose; instead `nextstep.derive_next_step` **re-derives Detective's own typed
+   next-step** (`witness` / `test` / `lines` / `boundary` / `internal` / `author`) from that JSON —
+   a faithful port of Detective's `cli._derive_inputs` + `_boundary_hint` tree (same brain, a JSON
+   mouth). The model then just produces the `--input` that typed step asks for.
 
 ## The mechanism, in one breath
 

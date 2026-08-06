@@ -36,6 +36,7 @@ import sys
 from pathlib import Path
 
 from .drive import changed_targets, det, enumerate_targets
+from .nextstep import derive_next_step
 from .preflight import check as preflight_check, report as preflight_report
 from .synth import _function_source, synthesize_inputs
 
@@ -64,21 +65,29 @@ def _ollama_up() -> bool:
         return False
 
 
-def _bounded_synth(state, source, func, model):
+def _bounded_synth(state, source, func, model, focus_items):
     """synthesize_inputs with a hard wall so one slow generation can't stall the crawl."""
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FT
     with ThreadPoolExecutor(max_workers=1) as ex:
         try:
-            return ex.submit(synthesize_inputs, state, source, func, model).result(timeout=CALL_WALL)
+            return ex.submit(synthesize_inputs, state, source, func, model, focus_items).result(timeout=CALL_WALL)
         except FT:
             return [], {}
 
 
-def process_function(target, root, model, apply_decompose, use_model):
-    """Drive one function to a pinned suite or a labelled residual. Returns a result dict."""
+def process_function(target, root, model, apply_decompose, use_model, pursue_survivors=False):
+    """Drive one function to a pinned suite or a labelled residual. Returns a result dict.
+
+    The model step FOLLOWS Detective's own typed next-step (`nextstep.derive_next_step`,
+    re-derived from the converge JSON) — it produces the `--input` Detective asks for, kind by
+    kind: `witness` pastes the engine's already-found kills; `lines`/`boundary` wake the model;
+    `internal` is a certified abstention (the derived-local trap — never spin); `test`/`author`
+    route to a human (`needs-input`). `pursue_survivors` (--tier2) opts into chasing candidate
+    equivalents past line-completeness (the `boundary` kind); off, the crawl stops at line gaps.
+    """
     file, func = target.split("::")
     r = {"target": target, "state": "", "decomposed": False, "killed": 0, "total": 0,
-         "model_calls": 0, "candidate_equiv": 0, "impure": (), "unclosed": []}
+         "model_calls": 0, "candidate_equiv": 0, "impure": (), "unclosed": [], "needs_input": None}
 
     diag, err = det("diagnose", target, root)
     if err:
@@ -100,39 +109,53 @@ def process_function(target, root, model, apply_decompose, use_model):
         v = (c.get("survivor_report") or {}).get("verdicts", [])
         r["candidate_equiv"] = sum(1 for x in v if not x.get("killable") and not x.get("crash_only"))
 
+    def impure(c):
+        # A function that reads the clock/fs/os is a FIXTURE case whether or not converge "pinned"
+        # it: a golden pinned to `int(time.time())` is green now and red next second. Route the
+        # whole function to review — never author a fragile pin, never spin --input on it.
+        g = tuple(c.get("environment_gated") or ())
+        if g:
+            r["impure"], r["state"] = g, "needs-fixture"
+        return bool(g)
+
     absorb(conv)
-    gated = tuple(conv.get("environment_gated") or ())
-    # A function that reads the clock/fs/os is a FIXTURE case whether or not converge "pinned"
-    # it: a golden pinned to `int(time.time())` is green now and red next second. Route the
-    # whole function to review — never author a fragile pin, never spin --input on an
-    # unreachable gap. (Detective 0.10.2 gives us environment_gated to detect this statically.)
-    if gated:
-        r["impure"], r["state"] = gated, "needs-fixture"
+    if impure(conv):
         return r
 
-    complete = conv.get("functionally_complete") and conv.get("line_complete")
-    missing = list(conv.get("missing_lines") or [])
-    if not complete and missing and use_model:
-        inputs, source = [], _function_source(file, func, root)
+    # Follow Detective's DO THIS, kind by kind, producing the --input it asks for. Guarded three
+    # ways: a per-call wall (_bounded_synth), a bounded pass count (MODEL_PASSES), and a NO-PROGRESS
+    # stop — the derived next-step must CHANGE, or we are spinning on an unreachable requirement.
+    if use_model:
+        inputs, source, prev = [], _function_source(file, func, root), None
         for _ in range(MODEL_PASSES):
-            if not missing:
+            if conv.get("functionally_complete") and conv.get("line_complete"):
                 break
-            fresh, _tele = _bounded_synth(conv, source, func, model)
-            r["model_calls"] += 1
-            new = [i for i in fresh if i not in inputs]
-            if not new:                                    # model offered nothing new -> stop
+            ns = derive_next_step(conv)
+            kind, items = ns["kind"], ns["items"]
+            if ns == prev:                                   # DO THIS unchanged -> no progress
+                break
+            prev = ns
+            if kind == "witness":                            # engine already found the kills — paste
+                new = [i for i in items if i not in inputs]
+            elif kind == "lines" or (kind == "boundary" and pursue_survivors):
+                fresh, _t = _bounded_synth(conv, source, func, model, items)
+                r["model_calls"] += 1
+                new = [i for i in fresh if i not in inputs]
+            elif kind in ("test", "author"):                 # needs a human value/object
+                absorb(conv)
+                r["needs_input"], r["state"] = ns, "needs-input"
+                return r
+            else:                                            # internal (never spin), or boundary w/o --tier2
+                break
+            if not new:
                 break
             inputs += new
             conv, err = det("converge", target, root, *sum((["--input", i] for i in inputs), []))
             if err:
                 break
-            if tuple(conv.get("environment_gated") or ()):  # impurity surfaced only mid-loop
-                r["impure"], r["state"] = tuple(conv["environment_gated"]), "needs-fixture"
+            if impure(conv):                                 # impurity surfaced only mid-loop
                 absorb(conv)
                 return r
-            before, missing = len(missing), list(conv.get("missing_lines") or [])
-            if len(missing) >= before:                      # NO-PROGRESS GUARD — the trap
-                break
         absorb(conv)
 
     if conv.get("functionally_complete") and conv.get("line_complete"):
@@ -154,6 +177,8 @@ def main():
     ap.add_argument("--check", action="store_true", help="verify deps (Detective/Wesker, Ollama, model) and exit")
     ap.add_argument("--diff", nargs="?", const="HEAD", default=None, metavar="BASE",
                     help="crawl ONLY functions changed since BASE (default HEAD) — churn before a push")
+    ap.add_argument("--tier2", action="store_true",
+                    help="PROPOSE equivalence arguments for candidate-equivalent survivors (review-only, never flags)")
     a = ap.parse_args()
 
     if a.check:
@@ -190,7 +215,7 @@ def main():
 
     rows = []
     for t in targets:
-        r = process_function(t, root, a.model, a.apply, use_model)
+        r = process_function(t, root, a.model, a.apply, use_model, a.tier2 and use_model)
         rows.append(r)
         short = r["target"].split("::")[-1][:30]
         seam = "yes" if r["decomposed"] is True else ("avail" if r["decomposed"] else "-")
@@ -200,6 +225,7 @@ def main():
     fixture = [r for r in rows if r["state"] == "needs-fixture"]
     unclosed = [r for r in rows if r["state"] == "unclosed"]
     errored = [r for r in rows if r["state"].startswith("error")]
+    needs_input = [r for r in rows if r["state"] == "needs-input"]
     pinned = [r for r in rows if r["state"] == "pinned"]
     ceq = sum(r["candidate_equiv"] for r in rows)
 
@@ -210,6 +236,11 @@ def main():
         reads = "; ".join(r["impure"][:2])
         hint = " — try --clock <epoch>" if any("clock" in x for x in r["impure"]) else ""
         print(f"     {r['target'].split('::')[-1]:<24} {reads}{hint}")
+    print(f"⚠ needs INPUT (you supply):   {len(needs_input)}")
+    for r in needs_input:
+        ns = r["needs_input"] or {}
+        ask = "write a test that calls it with" if ns.get("kind") == "test" else "author a call —"
+        print(f"     {r['target'].split('::')[-1]:<24} {ask} {'; '.join(ns.get('items', [])[:2])}")
     print(f"· unclosed pure gap:          {len(unclosed)}   {[r['target'].split('::')[-1] for r in unclosed]}")
     print(f"· candidate-equivalent (Tier-2 flag queue): {ceq} mutant(s) across {sum(1 for r in rows if r['candidate_equiv'])} fn")
     if errored:

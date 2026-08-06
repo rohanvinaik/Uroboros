@@ -38,15 +38,27 @@ The state fields Uroboros routes on (all from `converge --json`):
 `environment_gated` is the load-bearing addition: it is why Uroboros never spins the model on a
 branch gated by `path.exists()` or `time.time()`, which no argument can satisfy.
 
-## The three modules
+## The modules
 
 ```
 uroboros/
-  cycle.py      control flow — the ouroboros loop + the three-bucket routing + the guards
+  cycle.py      control flow — the ouroboros loop + the review-bucket routing + the guards
+  nextstep.py   Detective's typed DO-THIS, re-derived from converge JSON (the model's fodder)
   synth.py      the ONE model call — a typed skeleton the model selects into (no Python emitted)
-  drive.py      Detective I/O — `det()` (one --json subcommand) + `enumerate_targets()`
+  drive.py      Detective I/O — `det()` (one --json subcommand) + `enumerate_targets()` + diff-mode
   preflight.py  dependency check — Detective/Wesker (hard), Ollama + a model (soft)
 ```
+
+### `nextstep.py` — the typed next-step (same brain, a JSON mouth)
+Detective renders one guided next action per state from `cli._derive_inputs` + its
+`_boundary_hint` tree. **`derive_next_step(converge_json) -> {kind, items, total}`** is a
+FAITHFUL PORT of that derivation, re-run over the `survivor_report` JSON (the stable data
+contract) instead of scraping the typeset prose. The `kind` is Detective's own vocabulary, in
+priority order: `witness` (paste the engine's found kills) · `test` (a captured object → human) ·
+`lines` (a dark line outranks an edge) · `boundary` (a proved edge relation → the model drives it) ·
+`internal` (a derived local — **certified abstention, never spin**) · `author` (you supply it). The
+port is pinned by a differential test against Detective's own functions (`tests/test_nextstep.py`);
+the DRIFT NOTE in the module is load-bearing — it must move in lockstep with Detective's oracle.
 
 ### `drive.py` — Detective I/O (2 functions)
 - **`det(cmd, target, root, *extra) -> (state, error)`** — runs `detective <cmd> <target> --project-root

@@ -190,29 +190,27 @@ The function's source (read its `if`, comparison, and `raise` guards — the \
 values it tests against are your best choices):
 {source}
 
-Detective could not reach these source lines with the inputs it tried:
-    {missing_lines}
 {focus}
 Produce {min_calls}-{max_calls} calls. Each call is a JSON OBJECT mapping every \
 parameter name to a value. PREFER the menu of offered values for each parameter \
 (they are the boundary values the branches test); only invent a value when no \
-menu option can reach an unreached branch. Between them, the calls should hit: a \
-normal case, an edge/boundary case, and any case that trips a `raise` or a rare \
-branch.
+menu option can satisfy a requirement above. Between them, the calls should hit a \
+normal case, an edge/boundary case, and any `raise` or rare branch.
 
 Respond with JSON: {{"calls": [{{"{first_param}": ...}}, ...]}}"""
 
 
-def _focus_block(requirement: dict | None) -> str:
-    """A residual-targeted directive: name the ONE condition to drive. For an
-    internal-condition residual the condition names a DERIVED local, so the model
-    must reason BACKWARD from it to parameter values — the small reasoning task."""
-    if not requirement:
+def _focus_block(focus_items: list | None) -> str:
+    """Detective's own DO-THIS requirement(s), handed to the model verbatim as its fodder —
+    a line to reach, a boundary edge to land on. The model reasons BACKWARD from each to
+    parameter values. (An internal-condition residual names a DERIVED local; that is exactly
+    the kind Uroboros does NOT route here — the model would spin, so it abstains upstream.)
+    At least one call must satisfy each requirement."""
+    if not focus_items:
         return ""
-    line, cond = requirement.get("line"), requirement.get("condition")
-    return (f"\nFOCUS — reach line {line} by choosing parameters whose execution makes "
-            f"this condition TRUE:\n    {cond}\nWork backward from it to the inputs that "
-            f"produce it. At least one call MUST satisfy it.\n")
+    body = "\n".join(f"    - {it}" for it in focus_items)
+    return ("\nDetective derived these requirement(s) — author at least one call that reaches "
+            f"each, reasoning backward from it to the inputs:\n{body}\n")
 
 
 def _tuple_literal(args: list) -> str | None:
@@ -233,7 +231,7 @@ def _tuple_literal(args: list) -> str | None:
 
 
 def synthesize_inputs(state: dict, source: str, func: str, model: str,
-                      requirement: dict | None = None) -> tuple[list[str], dict]:
+                      focus_items: list | None = None) -> tuple[list[str], dict]:
     """THE ONE MODEL CALL. Returns (validated --input strings, telemetry).
 
     The schema is built PER TARGET from the signature: arity-locked call objects
@@ -258,8 +256,7 @@ def synthesize_inputs(state: dict, source: str, func: str, model: str,
         signature=sig_str,
         param_names=param_str,
         source=source,
-        missing_lines=state.get("missing_lines") or ([requirement["line"]] if requirement else []),
-        focus=_focus_block(requirement),
+        focus=_focus_block(focus_items),
         min_calls=min(3, MAX_CALLS), max_calls=MAX_CALLS,
         first_param=names[0] if names else "arg",
     )
@@ -322,3 +319,4 @@ def _function_source(file: str, func: str, root: str) -> str:
         if isinstance(node, ast.FunctionDef) and node.name == func:
             return ast.get_source_segment(open(path).read(), node) or "(not found)"
     return "(function not found)"
+
