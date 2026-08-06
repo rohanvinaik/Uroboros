@@ -9,16 +9,101 @@ import ast
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
 CONVERGE_WALL = 240  # per-call subprocess cap; a hit is an engine limit, recorded not hung
 
 
+# ── engine runtime resolution: run the engine WHERE the project's deps live ──────────
+# A globally-installed Uroboros runs Detective in its OWN interpreter (miniconda), which
+# cannot import the target repo's dependencies (its `chess`, its `numpy`) when those live
+# in the repo's own venv. The symptom is systematic: the real test suite fails to collect,
+# and every function reads as unpinned — a red baseline masquerading as "no tests reach it".
+# Cross-injecting the repo's site-packages into the engine's interpreter is NOT a fix:
+# Python versions differ across repos (a 3.10 venv's compiled numpy cannot load in 3.14),
+# so C-extensions are version-locked. The only robust bridge is to run the engine in an
+# interpreter that has BOTH the engine and the project's deps.
+
+_DEGRADE_NOTE = (
+    "⚠ {root}\n"
+    "  isolates its dependencies (a .venv the engine isn't installed in) and `uv` isn't on\n"
+    "  PATH — so the engine runs in its OWN environment and can't import this project's deps.\n"
+    "  Its real test suite won't collect and functions may read as unpinned below. To fix:\n"
+    "  install uv (https://docs.astral.sh/uv/), or `pip install uroboros-refactor` INTO this\n"
+    "  repo's venv and run it from there. Crawling what's reachable meanwhile."
+)
+
+
+def _engine_prefix(root, uv, active, venv, isolated):
+    """Pure decision: how to invoke the engine, given the detected runtime facts.
+
+    Returns `(argv_prefix, cwd, degraded)` — the tokens that go BEFORE the subcommand,
+    the working dir the subprocess needs (only the uv bridge cares — uv discovers the
+    project from cwd), and whether we had to fall back to a blind global run.
+
+    The ladder, most-specific first — uv is an accelerant, never load-bearing, so a fresh
+    clone on a machine that has never heard of uv still resolves correctly:
+
+    1. `active`  — the engine sits in an activated venv ($VIRTUAL_ENV): honor it outright.
+    2. `venv`    — the engine is installed in the repo's own `.venv`: run it there. This is
+                   the universal path — someone who `pip install`ed Uroboros into the repo's
+                   env gets the deps AND the engine with zero bridging, any Python, no uv.
+    3. isolated + uv — the repo isolates deps and the engine is NOT in that env, but uv can
+                   bridge: `uv run --with detective-spec` layers the engine's whole closure
+                   (Detective, Wesker, pytest) ONTO the repo's env ephemerally, so the repo's
+                   deps and the engine coexist without touching the repo's `.venv`.
+    4. isolated, no uv — nothing can reach the repo's env: run global and DEGRADE (flag it,
+                   keep crawling what is reachable). A blind number is worse than a named gap.
+    5. not isolated — no separate env to miss: the global engine is as good as any.
+    """
+    if active:
+        return [active], None, False
+    if venv:
+        return [venv], None, False
+    if isolated and uv:
+        return [uv, "run", "--no-sync", "--with", "detective-spec", "detective"], root, False
+    if isolated:
+        return ["detective"], None, True
+    return ["detective"], None, False
+
+
+_ENGINE_CACHE: dict = {}
+
+
+def _resolve_engine(root):
+    """Impure shell over `_engine_prefix`: probe the runtime ($VIRTUAL_ENV, the repo's
+    `.venv`, `which uv`, the isolation markers), decide, and CACHE per root — the hundreds
+    of per-function det() calls must not re-stat the tree or reprint the degrade note. The
+    note prints once, on the first (cache-miss) resolution, exactly when we fall to case 4.
+    """
+    key = str(root)
+    if key in _ENGINE_CACHE:
+        return _ENGINE_CACHE[key]
+    rp = Path(root)
+    active_dir = os.environ.get("VIRTUAL_ENV")
+    active = str(Path(active_dir) / "bin" / "detective") \
+        if active_dir and (Path(active_dir) / "bin" / "detective").exists() else None
+    venv = str(rp / ".venv" / "bin" / "detective") if (rp / ".venv" / "bin" / "detective").exists() else None
+    uv = shutil.which("uv")
+    isolated = (rp / ".venv").exists() or (rp / "uv.lock").exists() or (rp / "environment.yml").exists()
+    prefix, cwd, degraded = _engine_prefix(key, uv, active, venv, isolated)
+    if degraded:
+        print(_DEGRADE_NOTE.format(root=key))
+    _ENGINE_CACHE[key] = (prefix, cwd)
+    return prefix, cwd
+
+
 def det(cmd, target, root, *extra, wall=CONVERGE_WALL, stream=False):
     """Run one detective subcommand with --json. Returns (parsed, error_str).
 
     An empty target is omitted — `regime` resolves the whole repo with no target.
+
+    The engine is invoked through `_resolve_engine`, which runs it in an interpreter that
+    can import the TARGET repo's dependencies (see the ladder above) — not blindly in
+    Uroboros's own install env, where the repo's suite would fail to collect and every
+    function would read as unpinned.
 
     With `stream=True`, Detective's STDERR is inherited, not captured — its live
     per-mutant heartbeat (`… fn: 29/29 mutants · 570/s · done`, the `▸ pass` lines)
@@ -27,7 +112,8 @@ def det(cmd, target, root, *extra, wall=CONVERGE_WALL, stream=False):
     and the JSON contract is untouched. `stream=False` captures both, for the callers
     that need the stderr text back as an error string (e.g. regime's refusal).
     """
-    argv = ["detective", cmd, *( [str(target)] if target else [] ),
+    prefix, cwd = _resolve_engine(root)
+    argv = [*prefix, cmd, *( [str(target)] if target else [] ),
             "--project-root", str(root), "--json", *extra]
     capture = {"stdout": subprocess.PIPE} if stream else {"capture_output": True}
     # Silence the engine's own Python warnings — Wesker still reaches into numpy's deprecated
@@ -36,7 +122,7 @@ def det(cmd, target, root, *extra, wall=CONVERGE_WALL, stream=False):
     # warning, so it survives.
     env = {**os.environ, "PYTHONWARNINGS": "ignore"}
     try:
-        proc = subprocess.run(argv, text=True, timeout=wall, env=env, **capture)
+        proc = subprocess.run(argv, text=True, timeout=wall, env=env, cwd=cwd, **capture)
     except subprocess.TimeoutExpired:
         return None, "timeout"
     try:

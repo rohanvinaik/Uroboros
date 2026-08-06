@@ -45,7 +45,7 @@ uroboros/
   cycle.py      control flow — the ouroboros loop + the review-bucket routing + the guards
   nextstep.py   Detective's typed DO-THIS, re-derived from converge JSON (the model's fodder)
   synth.py      the ONE model call — a typed skeleton the model selects into (no Python emitted)
-  drive.py      Detective I/O — `det()` (streams the heartbeat) + `enumerate_targets()` (source-scoped) + diff-mode
+  drive.py      Detective I/O — `det()` (streams the heartbeat, runs the engine in the repo's env) + `enumerate_targets()` (source-scoped) + diff-mode
   preflight.py  dependency check — Detective/Wesker (hard), Ollama + a model (soft)
   launch.py     the hands-off launcher (`uroboros-launch`) — a constrained chat loop; the model selects, never drives
 ```
@@ -69,6 +69,18 @@ the DRIFT NOTE in the module is load-bearing — it must move in lockstep with D
   Detective's stderr so its live per-mutant heartbeat reaches the reader (engine warnings silenced via
   `PYTHONWARNINGS`); the crawl commands stream, `regime` is captured for its refusal text. A subprocess
   wall (`CONVERGE_WALL`) records a hung engine rather than hanging.
+- **`_engine_prefix` / `_resolve_engine` — run the engine WHERE the project's deps live.** A globally
+  installed Uroboros runs Detective in its own interpreter, which can't import the target repo's deps
+  (its `chess`, its `numpy`) when those sit in the repo's venv — so the real suite fails to collect and
+  every function reads as unpinned. `det()` resolves the invocation up a ladder (`_engine_prefix`, a pure
+  decision **pinned 18/18 by Detective**): engine in an activated `$VIRTUAL_ENV` → engine in the repo's
+  own `.venv` (the universal path: `pip install uroboros-refactor` into any repo's env) → repo isolates
+  deps + `uv` present (`uv run --no-sync --with detective-spec`, layering Detective/Wesker/pytest onto the
+  repo's env ephemerally, `.venv` untouched) → isolated + no uv (run global, **degrade with a precise fix,
+  keep crawling**) → not isolated (global). uv is an accelerant, never load-bearing; cross-injecting a
+  repo's site-packages is ruled out (Python versions differ — a 3.10 venv's numpy can't load in 3.14).
+  `_resolve_engine` is the impure shell (probe `$VIRTUAL_ENV` / `.venv` / `which uv` / isolation markers,
+  cache per root, print the degrade note once).
 - **`enumerate_targets(path, root)`** — the crawl set: the project's OWN source, module-level functions
   only, `relpath::func` in source order. `_source_roots` resolves where the source lives (a package /
   `src/`-layout / the top-level packages / fallback — robust across repo shapes); `_is_source` excludes

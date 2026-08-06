@@ -11,6 +11,7 @@ import ast
 import pytest
 
 from uroboros.cycle import _regime_target
+from uroboros import drive
 from uroboros.drive import (
     _changed_line_ranges,
     _functions_in_ranges,
@@ -198,6 +199,63 @@ class TestChangedTargets:
             "def add(a, b):\n    if a < 0:\n        return b\n    return a + b\n\n\ndef same(x):\n    return x\n"
         )
         assert list(changed_targets(tmp_path, "HEAD")) == ["calc.py::add"]
+
+
+class TestEngineResolver:
+    """The engine-runtime ladder's IMPURE shell — the FS/env probing Detective structurally
+    cannot pin. The pure DECISION (`_engine_prefix`) is pinned by the Detective-synth suite;
+    this proves the shell feeds it the right facts across repo shapes, so a globally-installed
+    Uroboros runs the engine WHERE the project's deps live instead of blind in its own env.
+    """
+
+    def _no_active_env(self, monkeypatch):
+        # Neutralise the host's activated venv so a real $VIRTUAL_ENV can't leak into the probe.
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+
+    def test_isolated_venv_with_uv_takes_the_bridge(self, tmp_path, monkeypatch):
+        self._no_active_env(monkeypatch)
+        monkeypatch.setattr(drive.shutil, "which", lambda _: "/usr/bin/uv")
+        (tmp_path / ".venv" / "bin").mkdir(parents=True)   # isolates deps, but engine NOT in it
+        prefix, cwd = drive._resolve_engine(tmp_path)
+        assert prefix == ["/usr/bin/uv", "run", "--no-sync", "--with", "detective-spec", "detective"]
+        assert cwd == str(tmp_path)   # uv discovers the project from cwd
+
+    def test_uv_lock_alone_signals_isolation(self, tmp_path, monkeypatch):
+        self._no_active_env(monkeypatch)
+        monkeypatch.setattr(drive.shutil, "which", lambda _: "/usr/bin/uv")
+        (tmp_path / "uv.lock").write_text("")   # a lock without a materialised .venv still isolates
+        assert drive._resolve_engine(tmp_path)[0][0] == "/usr/bin/uv"
+
+    def test_no_isolation_runs_the_global_engine(self, tmp_path, monkeypatch):
+        self._no_active_env(monkeypatch)
+        monkeypatch.setattr(drive.shutil, "which", lambda _: "/usr/bin/uv")
+        assert drive._resolve_engine(tmp_path) == (["detective"], None)   # nothing to miss
+
+    def test_isolated_without_uv_degrades_and_warns(self, tmp_path, monkeypatch, capsys):
+        self._no_active_env(monkeypatch)
+        monkeypatch.setattr(drive.shutil, "which", lambda _: None)   # no uv bridge available
+        (tmp_path / ".venv").mkdir()
+        prefix, cwd = drive._resolve_engine(tmp_path)
+        assert (prefix, cwd) == (["detective"], None)                # policy A: run global, keep crawling
+        assert "isolates its dependencies" in capsys.readouterr().out  # …but say so, once
+
+    def test_engine_in_repo_venv_beats_the_bridge(self, tmp_path, monkeypatch):
+        self._no_active_env(monkeypatch)
+        monkeypatch.setattr(drive.shutil, "which", lambda _: "/usr/bin/uv")
+        binp = tmp_path / ".venv" / "bin"
+        binp.mkdir(parents=True)
+        (binp / "detective").write_text("#!/bin/sh\n")   # engine installed IN the repo's venv
+        prefix, cwd = drive._resolve_engine(tmp_path)
+        assert prefix == [str(binp / "detective")] and cwd is None   # use it directly, no uv needed
+
+    def test_resolution_is_cached_per_root(self, tmp_path, monkeypatch):
+        self._no_active_env(monkeypatch)
+        calls = []
+        monkeypatch.setattr(drive.shutil, "which", lambda x: calls.append(x) or "/usr/bin/uv")
+        (tmp_path / "uv.lock").write_text("")
+        drive._resolve_engine(tmp_path)
+        drive._resolve_engine(tmp_path)
+        assert len(calls) == 1   # hundreds of per-function det() calls must not re-probe the tree
 
 
 if __name__ == "__main__":

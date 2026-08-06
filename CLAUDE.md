@@ -45,6 +45,13 @@ one step. The whole value is packaging a rigorous loop so it runs itself.
   Tier-2 with no flag. Buckets: pinned / needs-fixture / **needs-input** (`test`/`author`) / unclosed.
 - **diff-mode:** `uroboros --diff [BASE]` crawls only functions changed since BASE ("churn before
   a push"). Built.
+- **Engine-runtime resolution:** `det()` runs the engine WHERE the target repo's deps live, not blind
+  in Uroboros's own install env (the systematic "real suite can't collect → everything reads unpinned"
+  failure). A ladder (`_engine_prefix`, pinned 18/18 by Detective; `_resolve_engine` the impure shell):
+  activated `$VIRTUAL_ENV` → repo's own `.venv` (universal: `pip install uroboros-refactor` into it) →
+  isolated deps + `uv` (`uv run --no-sync --with detective-spec`, ephemeral, `.venv` untouched) →
+  isolated + no uv (global + **degrade with a precise fix, keep crawling**) → not isolated (global).
+  uv is an accelerant, never load-bearing; cross-injection is ruled out (3.10 vs 3.14 C-ext lock).
 - **Setup + scope + surface:** a startup **setup pass** (`regime --migrate`) so a fresh repo Just Works
   (declares the marker/pythonpath — else the baseline is empty and nothing happens); `enumerate_targets`
   crawls the project's **declared source** (`_source_roots`, robust across repo shapes — not data/vendored
