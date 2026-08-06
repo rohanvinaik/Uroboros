@@ -54,7 +54,7 @@ That one job sits on a difficulty ladder, which is why a 4B model on a laptop is
 | tier | the input needed | supplied by |
 |---|---|---|
 | **1 · script** | a distinguishing call the engine already found | pasted — no model |
-| **2 · low-lift** | reach an un-executed line | the small model |
+| **2 · any dolt** | reach an un-executed line | the small model |
 | **3 · complex-but-obvious** | land on a *proved* boundary edge | the small model |
 | **4 · purposivistic** | a domain object, or a value only you know | **you** — it abstains and hands it back |
 
