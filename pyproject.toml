@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 uroboros = "uroboros.cycle:main"
+uroboros-launch = "uroboros.launch:main"   # constrained-output chat launcher
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
