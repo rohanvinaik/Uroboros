@@ -96,17 +96,17 @@ def process_function(target, root, model, apply_decompose, use_model):
     r = {"target": target, "state": "", "decomposed": False, "killed": 0, "total": 0,
          "model_calls": 0, "candidate_equiv": 0, "impure": (), "unclosed": [], "needs_input": None}
 
-    diag, err = det("diagnose", target, root)
+    diag, err = det("diagnose", target, root, stream=True)
     if err:
         r["state"] = f"error:diagnose:{err}"
         return r
     if diag.get("decompose_seams") and apply_decompose:
-        _, derr = det("decompose", target, root, "--apply")
+        _, derr = det("decompose", target, root, "--apply", stream=True)
         r["decomposed"] = derr is None
     elif diag.get("decompose_seams"):
         r["decomposed"] = "available"
 
-    conv, err = det("converge", target, root)
+    conv, err = det("converge", target, root, stream=True)
     if err:
         r["state"] = f"error:converge:{err}"
         return r
@@ -157,7 +157,7 @@ def process_function(target, root, model, apply_decompose, use_model):
             if not new:
                 break
             inputs += new
-            conv, err = det("converge", target, root, *sum((["--input", i] for i in inputs), []))
+            conv, err = det("converge", target, root, *sum((["--input", i] for i in inputs), []), stream=True)
             if err:
                 break
             if impure(conv):                                 # impurity surfaced only mid-loop
@@ -186,6 +186,14 @@ def main():
                     help="crawl ONLY functions changed since BASE (default HEAD) — churn before a push")
     a = ap.parse_args()
 
+    # Line-buffer so the crawl STREAMS through a pipe (a launcher, Goose, tee) instead of
+    # going silent until the buffer fills — the per-function rows and Detective's inherited
+    # stderr heartbeat both reach the reader live.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
+
     if a.check:
         return 0 if preflight_report(a.model) else 1
     if not a.path and not a.diff:
@@ -195,9 +203,17 @@ def main():
         return 1
     root = Path(a.project_root).resolve()
 
-    _, rerr = det("regime", "" if a.diff else _regime_target(a.path), root)
+    # Setup pass. Detective's regime resolves how the repo imports its code and runs its tests, and
+    # --migrate DECLARES the `detective` pytest marker + pythonpath in pyproject so the existing suite
+    # is discovered and the code is importable. Without it the baseline is empty and the crawl does
+    # nothing. --migrate only ever writes Detective's own declarative config — never your code — and is
+    # idempotent. A genuine conflict it cannot resolve still refuses: a number measured against the
+    # wrong file is worse than no number.
+    print("· setting up the testing regime (detective regime --migrate) …")
+    _, rerr = det("regime", "" if a.diff else _regime_target(a.path), root, "--migrate", stream=True)
     if rerr and rerr != "no-json":
-        print(f"regime refused: {rerr}\n  run `detective regime --migrate --project-root {root}`", file=sys.stderr)
+        print(f"regime refused: {rerr}\n  resolve the conflict (see `detective regime --project-root "
+              f"{root}`), then re-run.", file=sys.stderr)
         return 1
 
     use_model = not a.no_model and _ollama_up()
@@ -219,7 +235,8 @@ def main():
     print("-" * 78)
 
     rows = []
-    for t in targets:
+    for i, t in enumerate(targets, 1):
+        print(f"\n[{i}/{len(targets)}] {t.split('::')[-1]}")   # heartbeat: where it is, that it's alive
         r = process_function(t, root, a.model, a.apply, use_model)
         rows.append(r)
         short = r["target"].split("::")[-1][:30]

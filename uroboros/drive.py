@@ -7,6 +7,7 @@ knows how to speak to the CLI and how to find work.
 """
 import ast
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -14,15 +15,28 @@ from pathlib import Path
 CONVERGE_WALL = 240  # per-call subprocess cap; a hit is an engine limit, recorded not hung
 
 
-def det(cmd, target, root, *extra, wall=CONVERGE_WALL):
+def det(cmd, target, root, *extra, wall=CONVERGE_WALL, stream=False):
     """Run one detective subcommand with --json. Returns (parsed, error_str).
 
     An empty target is omitted — `regime` resolves the whole repo with no target.
+
+    With `stream=True`, Detective's STDERR is inherited, not captured — its live
+    per-mutant heartbeat (`… fn: 29/29 mutants · 570/s · done`, the `▸ pass` lines)
+    flows straight to the terminal, so a long crawl is never silent. Detective puts
+    progress on stderr and the `--json` result on stdout, so only stdout is captured
+    and the JSON contract is untouched. `stream=False` captures both, for the callers
+    that need the stderr text back as an error string (e.g. regime's refusal).
     """
     argv = ["detective", cmd, *( [str(target)] if target else [] ),
             "--project-root", str(root), "--json", *extra]
+    capture = {"stdout": subprocess.PIPE} if stream else {"capture_output": True}
+    # Silence the engine's own Python warnings — Wesker still reaches into numpy's deprecated
+    # `numpy.core`, which fires a DeprecationWarning per mutant probe and, now that stderr is
+    # streamed for the heartbeat, would drown the progress feed. The heartbeat is a print, not a
+    # warning, so it survives.
+    env = {**os.environ, "PYTHONWARNINGS": "ignore"}
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=wall)
+        proc = subprocess.run(argv, text=True, timeout=wall, env=env, **capture)
     except subprocess.TimeoutExpired:
         return None, "timeout"
     try:
@@ -31,17 +45,75 @@ def det(cmd, target, root, *extra, wall=CONVERGE_WALL):
         return None, (proc.stderr or proc.stdout or "no-json").strip()[:160]
 
 
-def enumerate_targets(path: Path, root: Path):
-    """Every function to crawl in a .py file, or across every .py under a dir.
+# Directory names that are never your source: virtualenvs, VCS, caches, build/packaging
+# trees. Without this filter, `uroboros .` rglobs into `.venv` and pins the whole of
+# site-packages — 3000+ functions of Detective/Wesker internals — which is never what
+# "crawl this repo" means. Any hidden dir (a leading dot) is excluded too.
+_SKIP_DIRS = {
+    "venv", "env", "node_modules", "site-packages", "site-packages64",
+    "build", "dist", "__pycache__", ".tox", ".nox", "vendor",
+}
 
-    Yields module-level functions AND the methods of top-level classes, as
-    'relpath::func' / 'relpath::Class.method' strings in source order (Detective
-    accepts the dotted method target — verified). Skips dunder names and test
-    files — the crawl refactors source, not its own tests, and not the
-    `__init__`-style hooks. (Nested classes and async defs are not descended —
-    the same gaps the module-level pass already has; see ARCHITECTURE stage 2.)
+# Top-level dirs that are packages (have __init__.py) but are never the LIBRARY: tests,
+# docs, examples, benchmarks, tooling, data. Excluded from source-root selection so a
+# flat-layout repo resolves to its actual code, not its tests/ or benchmarks/ tree.
+_AUX_DIRS = {
+    "tests", "test", "testing", "docs", "doc", "examples", "example", "samples",
+    "benchmarks", "benchmark", "bench", "notebooks", "data", "devtools", "scripts",
+    "e2e", "integration", "fixtures",
+}
+
+
+def _is_source(f: Path, root: Path) -> bool:
+    """True for a .py file that is the project's own source — not inside a virtualenv,
+    VCS, cache, build, or vendored tree. Filters on the directory components between
+    `root` and the file; a single explicit file target bypasses this entirely."""
+    parts = f.relative_to(root).parts[:-1]   # directory components only, not the filename
+    return not any(p.startswith(".") or p in _SKIP_DIRS or p.endswith(".egg-info") for p in parts)
+
+
+def _source_roots(path: Path) -> list[Path]:
+    """The directories that hold the project's OWN source, given a repo or dir —
+    what you would point Detective at, not the whole tree beside it.
+
+    * `path` is itself a package (has `__init__.py`) → crawl it directly.
+    * src-layout (a `src/` dir) → `src/`.
+    * flat-layout → the top-level packages (dirs with `__init__.py`), skipping hidden
+      and non-source dirs.
+    * otherwise → the dir as-is (a loose-script repo).
+
+    This is why `uroboros .` on a real repo crawls the code and not `data/`, generated
+    environment files, `quarantine/`, or a vendored tree sitting next to it.
     """
-    files = [path] if path.is_file() else sorted(path.rglob("*.py"))
+    if (path / "__init__.py").exists():
+        return [path]
+    if (path / "src").is_dir():
+        return [path / "src"]
+    pkgs = [d for d in sorted(path.iterdir())
+            if d.is_dir() and (d / "__init__.py").exists()
+            and not d.name.startswith(".") and d.name not in _SKIP_DIRS
+            and d.name not in _AUX_DIRS]
+    return pkgs or [path]
+
+
+def enumerate_targets(path: Path, root: Path):
+    """The module-level functions to crawl — the project's OWN source, as
+    'relpath::func' strings in source order.
+
+    Pointed at a directory, it resolves the source roots (`_source_roots`: package /
+    src-layout / flat packages / fallback — robust across normal repo shapes) and
+    rglobs those, skipping virtualenv / VCS / cache / build trees (`_is_source`) and
+    test files. So `uroboros .` crawls your code, never the data/, generated envs, or
+    vendored trees beside it. An explicit file target bypasses the resolver.
+
+    METHODS ARE SKIPPED. Detective cannot yet build a receiver for a bound method
+    (Detective #25), so a method target comes back unpinnable — pure grind on a
+    class-heavy tree. Module-level functions only until that gap closes.
+    """
+    if path.is_file():
+        files = [path]
+    else:
+        files = sorted(f for r in _source_roots(path) for f in r.rglob("*.py") if _is_source(f, root))
     for f in files:
         if f.name.startswith("test_") or f.name == "conftest.py":
             continue
@@ -53,10 +125,6 @@ def enumerate_targets(path: Path, root: Path):
         for node in tree.body:
             if isinstance(node, ast.FunctionDef) and not node.name.startswith("__"):
                 yield f"{rel}::{node.name}"
-            elif isinstance(node, ast.ClassDef):
-                for sub in node.body:
-                    if isinstance(sub, ast.FunctionDef) and not sub.name.startswith("__"):
-                        yield f"{rel}::{node.name}.{sub.name}"
 
 
 # ── diff-mode: the pitched "churn before push" crawl set ──────────────────────

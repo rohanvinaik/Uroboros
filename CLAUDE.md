@@ -45,15 +45,28 @@ one step. The whole value is packaging a rigorous loop so it runs itself.
   Tier-2 with no flag. Buckets: pinned / needs-fixture / **needs-input** (`test`/`author`) / unclosed.
 - **diff-mode:** `uroboros --diff [BASE]` crawls only functions changed since BASE ("churn before
   a push"). Built.
-- **Pending:** fleet parallelism (the crawl is still serial).
+- **Setup + scope + surface:** a startup **setup pass** (`regime --migrate`) so a fresh repo Just Works
+  (declares the marker/pythonpath — else the baseline is empty and nothing happens); `enumerate_targets`
+  crawls the project's **declared source** (`_source_roots`, robust across repo shapes — not data/vendored
+  trees), **module-level functions only** (methods skipped, Detective #25); the crawl **streams live**
+  (`[i/N]` + Detective's heartbeat, engine warnings silenced); **`uroboros-launch`** is a
+  constrained-output chat launcher (model selects, never drives).
+- **Pending:** fleet parallelism (the crawl is still serial); re-enable methods when Detective #25 lands.
 
 ## How to run
 
 ```bash
-uroboros --check                       # deps: Detective/Wesker (hard), Ollama + model (soft)
-uroboros path.py --project-root .      # report (safe: writes tests, doesn't rewrite source)
-uroboros src/ --project-root . --apply # apply proven-safe decompositions
+uroboros --check          # deps: Detective/Wesker (hard), Ollama + model (soft)
+uroboros .                # crawl THIS repo's source (report mode — writes tests, not source)
+uroboros . --apply        # + apply proven-safe decompositions (rewrites source)
+uroboros --diff [BASE]    # only functions changed since BASE — churn before a push
+uroboros-launch           # hands-off chat launcher: say "run uroboros" → runs `. --apply`
 ```
+
+Every run opens with a **setup pass** (`detective regime --migrate`) that declares the `detective`
+pytest marker + pythonpath, so the existing suite is discovered and the code imports — without it the
+baseline is empty and nothing happens. It then crawls the project's own **declared source** (module-level
+functions; methods skipped until Detective #25) and streams Detective's live heartbeat per function.
 
 ## Code standards
 

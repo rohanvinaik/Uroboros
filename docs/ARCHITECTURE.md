@@ -45,8 +45,9 @@ uroboros/
   cycle.py      control flow — the ouroboros loop + the review-bucket routing + the guards
   nextstep.py   Detective's typed DO-THIS, re-derived from converge JSON (the model's fodder)
   synth.py      the ONE model call — a typed skeleton the model selects into (no Python emitted)
-  drive.py      Detective I/O — `det()` (one --json subcommand) + `enumerate_targets()` + diff-mode
+  drive.py      Detective I/O — `det()` (streams the heartbeat) + `enumerate_targets()` (source-scoped) + diff-mode
   preflight.py  dependency check — Detective/Wesker (hard), Ollama + a model (soft)
+  launch.py     the hands-off launcher (`uroboros-launch`) — a constrained chat loop; the model selects, never drives
 ```
 
 ### `nextstep.py` — the typed next-step (same brain, a JSON mouth)
@@ -62,13 +63,24 @@ The machine closes tiers 1-3; tier 4 becomes the `needs-input` bucket or is left
 port is pinned by a differential test against Detective's own functions (`tests/test_nextstep.py`);
 the DRIFT NOTE in the module is load-bearing — it must move in lockstep with Detective's oracle.
 
-### `drive.py` — Detective I/O (2 functions)
-- **`det(cmd, target, root, *extra) -> (state, error)`** — runs `detective <cmd> <target> --project-root
-  <root> --json <extra>`, returns the parsed JSON or an error string. An empty target is omitted
-  (so `regime` can resolve the whole repo). A subprocess wall (`CONVERGE_WALL`) means a hung engine
-  is recorded, not a hang.
-- **`enumerate_targets(path, root)`** — top-level functions in a file or across a dir (skips
-  `test_*`/`conftest`), yielding `relpath::func` in source order.
+### `drive.py` — Detective I/O
+- **`det(cmd, target, root, *extra, stream=False) -> (state, error)`** — runs `detective <cmd> <target>
+  --project-root <root> --json <extra>`, returns parsed JSON or an error string. `stream=True` inherits
+  Detective's stderr so its live per-mutant heartbeat reaches the reader (engine warnings silenced via
+  `PYTHONWARNINGS`); the crawl commands stream, `regime` is captured for its refusal text. A subprocess
+  wall (`CONVERGE_WALL`) records a hung engine rather than hanging.
+- **`enumerate_targets(path, root)`** — the crawl set: the project's OWN source, module-level functions
+  only, `relpath::func` in source order. `_source_roots` resolves where the source lives (a package /
+  `src/`-layout / the top-level packages / fallback — robust across repo shapes); `_is_source` excludes
+  virtualenv·VCS·cache·build and aux trees (`tests`/`docs`/`examples`/`data`); **methods are skipped**
+  (Detective can't build a receiver yet — #25). `changed_targets(root, base)` is the diff-mode variant.
+
+### `launch.py` — the hands-off launcher (`uroboros-launch`)
+A constrained chat loop: each turn the model fills one typed schema — a prose `reply` and one boolean,
+`run_uroboros` — and nothing else. No shell, no file access, no tool calls, so it cannot wander off and
+edit your source (the failure a free-form agent loop invites from a 4B model). When the flag is set (or
+the word "uroboros" appears), the HARNESS runs `uroboros . --apply` and streams the crawl. Same law as
+`synth.synthesize_inputs`, one layer up: the model selects, the harness drives.
 
 ### `synth.py` — the one model call
 The public entry is **`synthesize_inputs(state, source, func, model, requirement=None) -> (inputs, tele)`**.
@@ -126,12 +138,14 @@ Uroboros scopes work at exactly three levels, and deliberately stops at the seco
    SERIAL: each `converge --input` pass consumes the previous pass's result, so there is nothing
    to parallelize and it would be wrong to try.
 
-2. **The codebase — the traversal (stage 2, built).** `enumerate_targets` plucks the functions
-   from a file or directory (stdlib `ast`, source order, tests/dunders skipped) and the crawl runs
-   them ONE AT A TIME TO COMPLETION — function A fully pinned before B begins. This is exactly what
-   `uroboros src/` already does. Serial by design: the mutant state lives in memory and a function
-   is stateless or stateful depending on the step, so one-at-a-time keeps the state handling
-   tractable. (Plucking is `ast`, not an external linter — a linter walks the same tree internally.)
+2. **The codebase — the traversal (stage 2, built).** After a one-time **setup pass** (`detective
+   regime --migrate` — declares the pytest marker + pythonpath so the existing suite is discovered and
+   the code imports; without it the baseline is empty and nothing happens), `enumerate_targets` resolves
+   the project's OWN source (`_source_roots`: a package / `src/`-layout / the top-level packages — robust
+   across repo shapes, never the data/generated/vendored trees beside it), crawls its module-level
+   functions (methods skipped until Detective #25), and runs them ONE AT A TIME TO COMPLETION. Serial by
+   design: the mutant state lives in memory and a function is stateless or stateful depending on the
+   step, so one-at-a-time keeps the state handling tractable.
 
 3. **The fleet — concurrency (stage 3, deliberately unbuilt).** K workers on *different* functions
    AT ONCE. The in-memory mutant state, the AST rewrites, and the stateful/stateless-per-step model
@@ -146,10 +160,8 @@ Uroboros scopes work at exactly three levels, and deliberately stops at the seco
   Detective captures arguments from one real test you write (its `--input` refuses what it can't parse).
 - Impurity handling today is **detect-and-route**, plus Detective's `--clock` for the wall clock.
   Filesystem/env fixtures are the fixture queue's job (Detective issue #24).
-- The stage-2 crawl (`enumerate_targets`) plucks module-level functions **and** the methods of
-  top-level classes (`file.py::Class.method`, which Detective accepts). It does NOT descend into
-  nested classes or async defs — the same gaps the module-level pass has. A further honest limit is
-  Detective-side, not Uroboros's: a method that needs a *constructed receiver* (a real `self`
-  instance) is a domain object the synthesizer can't invent, so such methods surface as
-  `unclosed` / `needs-input` rather than pinned — the crawl makes them VISIBLE, which is the win,
-  but closing them is a hand-written test (or a Detective receiver-synthesis improvement).
+- The stage-2 crawl (`enumerate_targets`) crawls the project's declared source — **module-level
+  functions only**. Methods are skipped: Detective cannot yet construct a receiver (a real `self`) for
+  a bound method (#25), so a method target is unpinnable and crawling it is pure grind on a class-heavy
+  tree. Nested classes and async defs are likewise not descended. Re-enable methods once Detective's
+  receiver synthesis lands.

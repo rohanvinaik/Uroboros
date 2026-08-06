@@ -112,7 +112,7 @@ class TestMining:
 
 # ── enumerate_targets — the crawl set: skip tests, keep source order ──────────
 class TestEnumerateTargets:
-    def test_plucks_functions_and_methods_skips_tests_dunders_nested(self, tmp_path):
+    def test_module_functions_only_skips_methods_tests_dunders(self, tmp_path):
         (tmp_path / "mod.py").write_text(
             "def alpha():\n    pass\n\n"
             "def __hidden():\n    pass\n\n"
@@ -122,9 +122,32 @@ class TestEnumerateTargets:
         (tmp_path / "test_mod.py").write_text("def test_alpha():\n    pass\n")
         (tmp_path / "conftest.py").write_text("def fixture_thing():\n    pass\n")
         targets = list(enumerate_targets(tmp_path, tmp_path))
-        # source order; a top-level class contributes its methods as Class.method;
-        # dunders (__hidden, __init__), a nested local, and test files are all skipped
-        assert targets == ["mod.py::alpha", "mod.py::Box.open", "mod.py::beta"]
+        # methods (Box.open) are skipped until Detective can pin a receiver (#25);
+        # dunders, nested locals, and test files are skipped too — module functions only
+        assert targets == ["mod.py::alpha", "mod.py::beta"]
+
+    def test_skips_venv_vcs_cache_and_build_trees(self, tmp_path):
+        (tmp_path / "src.py").write_text("def real():\n    pass\n")
+        for buried in (".venv/lib/dep.py", "venv/dep.py", "node_modules/x.py",
+                       "build/gen.py", "__pycache__/c.py", ".git/hooks/h.py", "pkg.egg-info/e.py"):
+            p = tmp_path / buried
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("def buried():\n    pass\n")
+        # only the project's own source is crawled — never a virtualenv or a cache tree
+        assert list(enumerate_targets(tmp_path, tmp_path)) == ["src.py::real"]
+
+    def test_scopes_to_the_library_package_not_tests_data_or_venv(self, tmp_path):
+        (tmp_path / "mypkg").mkdir()
+        (tmp_path / "mypkg" / "__init__.py").write_text("")
+        (tmp_path / "mypkg" / "core.py").write_text("def real():\n    pass\n")
+        for aux in ("tests", "data", "benchmarks"):          # packages, but never the library
+            (tmp_path / aux).mkdir()
+            (tmp_path / aux / "__init__.py").write_text("")
+            (tmp_path / aux / "x.py").write_text("def aux():\n    pass\n")
+        (tmp_path / ".venv" / "lib").mkdir(parents=True)
+        (tmp_path / ".venv" / "lib" / "dep.py").write_text("def dep():\n    pass\n")
+        # a flat-layout repo resolves to its actual package — not tests/, data/, or .venv/
+        assert list(enumerate_targets(tmp_path, tmp_path)) == ["mypkg/core.py::real"]
 
 
 # ── diff-mode pure core — parse a diff, map ranges to functions ───────────────
