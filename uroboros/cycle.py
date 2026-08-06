@@ -75,15 +75,22 @@ def _bounded_synth(state, source, func, model, focus_items):
             return [], {}
 
 
-def process_function(target, root, model, apply_decompose, use_model, pursue_survivors=False):
+def process_function(target, root, model, apply_decompose, use_model):
     """Drive one function to a pinned suite or a labelled residual. Returns a result dict.
 
     The model step FOLLOWS Detective's own typed next-step (`nextstep.derive_next_step`,
-    re-derived from the converge JSON) — it produces the `--input` Detective asks for, kind by
-    kind: `witness` pastes the engine's already-found kills; `lines`/`boundary` wake the model;
-    `internal` is a certified abstention (the derived-local trap — never spin); `test`/`author`
-    route to a human (`needs-input`). `pursue_survivors` (--tier2) opts into chasing candidate
-    equivalents past line-completeness (the `boundary` kind); off, the crawl stops at line gaps.
+    re-derived from the converge JSON), routing each by the DIFFICULTY TIER of the input it
+    asks for — the ladder the model bake-off was built around:
+
+      1. purely script-killable  → `witness`  — the engine already RAN the input; paste it, no model
+      2. any-dolt / core do-next  → `lines`    — reach the branch; the small model's staple
+      3. complex-but-obvious      → `boundary` — author a call landing on a PROVED edge; the tier the
+                                                 bake-off qualified the model (qwen3:4b) for
+      4. genuinely purposivistic  → `internal` / `test` / `author` — needs human intent; ABSTAIN and
+                                                 promote (never spin: derived local, captured object,
+                                                 or a value only the caller knows)
+
+    Tiers 1-3 the machine closes; tier 4 goes to the human (`needs-input`, or left `unclosed`).
     """
     file, func = target.split("::")
     r = {"target": target, "state": "", "decomposed": False, "killed": 0, "total": 0,
@@ -122,9 +129,9 @@ def process_function(target, root, model, apply_decompose, use_model, pursue_sur
     if impure(conv):
         return r
 
-    # Follow Detective's DO THIS, kind by kind, producing the --input it asks for. Guarded three
-    # ways: a per-call wall (_bounded_synth), a bounded pass count (MODEL_PASSES), and a NO-PROGRESS
-    # stop — the derived next-step must CHANGE, or we are spinning on an unreachable requirement.
+    # Follow Detective's DO THIS, kind by kind (the tier ladder above), producing the --input it
+    # asks for. Guarded three ways: a per-call wall (_bounded_synth), a bounded pass count
+    # (MODEL_PASSES), and a NO-PROGRESS stop — the derived next-step must CHANGE, or we are spinning.
     if use_model:
         inputs, source, prev = [], _function_source(file, func, root), None
         for _ in range(MODEL_PASSES):
@@ -135,17 +142,17 @@ def process_function(target, root, model, apply_decompose, use_model, pursue_sur
             if ns == prev:                                   # DO THIS unchanged -> no progress
                 break
             prev = ns
-            if kind == "witness":                            # engine already found the kills — paste
+            if kind == "witness":                            # tier 1 — engine found the kill; paste
                 new = [i for i in items if i not in inputs]
-            elif kind == "lines" or (kind == "boundary" and pursue_survivors):
+            elif kind in ("lines", "boundary"):              # tiers 2-3 — the one model call
                 fresh, _t = _bounded_synth(conv, source, func, model, items)
                 r["model_calls"] += 1
                 new = [i for i in fresh if i not in inputs]
-            elif kind in ("test", "author"):                 # needs a human value/object
+            elif kind in ("test", "author"):                 # tier 4 — needs a human value/object
                 absorb(conv)
                 r["needs_input"], r["state"] = ns, "needs-input"
                 return r
-            else:                                            # internal (never spin), or boundary w/o --tier2
+            else:                                            # tier 4 — `internal`: derived local, never spin
                 break
             if not new:
                 break
@@ -177,8 +184,6 @@ def main():
     ap.add_argument("--check", action="store_true", help="verify deps (Detective/Wesker, Ollama, model) and exit")
     ap.add_argument("--diff", nargs="?", const="HEAD", default=None, metavar="BASE",
                     help="crawl ONLY functions changed since BASE (default HEAD) — churn before a push")
-    ap.add_argument("--tier2", action="store_true",
-                    help="PROPOSE equivalence arguments for candidate-equivalent survivors (review-only, never flags)")
     a = ap.parse_args()
 
     if a.check:
@@ -215,7 +220,7 @@ def main():
 
     rows = []
     for t in targets:
-        r = process_function(t, root, a.model, a.apply, use_model, a.tier2 and use_model)
+        r = process_function(t, root, a.model, a.apply, use_model)
         rows.append(r)
         short = r["target"].split("::")[-1][:30]
         seam = "yes" if r["decomposed"] is True else ("avail" if r["decomposed"] else "-")

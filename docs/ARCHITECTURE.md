@@ -53,10 +53,12 @@ uroboros/
 Detective renders one guided next action per state from `cli._derive_inputs` + its
 `_boundary_hint` tree. **`derive_next_step(converge_json) -> {kind, items, total}`** is a
 FAITHFUL PORT of that derivation, re-run over the `survivor_report` JSON (the stable data
-contract) instead of scraping the typeset prose. The `kind` is Detective's own vocabulary, in
-priority order: `witness` (paste the engine's found kills) · `test` (a captured object → human) ·
-`lines` (a dark line outranks an edge) · `boundary` (a proved edge relation → the model drives it) ·
-`internal` (a derived local — **certified abstention, never spin**) · `author` (you supply it). The
+contract) instead of scraping the typeset prose. The `kind` is Detective's own vocabulary — and the
+bake-off's **difficulty ladder** for who supplies the input: `witness` = tier-1 pure-script (paste
+the engine's found kills, no model) · `lines` = tier-2 any-dolt · `boundary` = tier-3
+complex-but-obvious (a proved edge → the model drives it, the tier qwen3:4b was qualified for) ·
+`internal`/`test`/`author` = tier-4 purposivistic (**certified abstention → promote to the human**).
+The machine closes tiers 1-3; tier 4 becomes the `needs-input` bucket or is left `unclosed`. The
 port is pinned by a differential test against Detective's own functions (`tests/test_nextstep.py`);
 the DRIFT NOTE in the module is load-bearing — it must move in lockstep with Detective's oracle.
 

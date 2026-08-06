@@ -38,10 +38,11 @@ one step. The whole value is packaging a rigorous loop so it runs itself.
   `file.py::func`. Model default `qwen3:4b-instruct` (bake-off winner).
 - **The model step is now DO-THIS-driven** (`nextstep.derive_next_step`): a faithful port of
   Detective's own `_derive_inputs`/`_boundary_hint` re-derives the typed next-step from converge
-  JSON; the model produces the `--input` that step asks for, kind by kind. This subsumes Tier-2 —
-  candidate-equivalents surface as `boundary` (model tries to kill, gated by `--tier2`) or
-  `internal` (certified abstention, never spin). Buckets: pinned / needs-fixture / **needs-input**
-  (`test`/`author` kinds — you supply the object/value) / unclosed.
+  JSON; the model produces the `--input` that step asks for, kind by kind. The kinds ARE the
+  bake-off's difficulty ladder: `witness` = tier-1 pure-script (paste, no model); `lines` = tier-2
+  any-dolt; `boundary` = tier-3 complex-but-obvious (the model, default-on — the tier qwen3:4b was
+  chosen for); `internal`/`test`/`author` = tier-4 purposivistic (abstain → promote). This subsumes
+  Tier-2 with no flag. Buckets: pinned / needs-fixture / **needs-input** (`test`/`author`) / unclosed.
 - **diff-mode:** `uroboros --diff [BASE]` crawls only functions changed since BASE ("churn before
   a push"). Built.
 - **Pending:** fleet parallelism (the crawl is still serial).

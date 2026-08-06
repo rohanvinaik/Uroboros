@@ -17,13 +17,15 @@ DRIFT NOTE: if Detective changes its derivation logic, this copy must be updated
 It keys off the JSON data contract (diff_summary / missing_lines / param_names), which is
 robust to cosmetic prose changes but NOT to a change in what the oracle derives.
 
-The kinds, in Detective's priority order:
-  witness   — engine RAN inputs and saw a mutant differ; paste them as --input (free kills)
-  test      — that witness needs a captured object, not a typeable literal → a human writes it
-  lines     — a dark line outranks an equivalent's edge (coverage is a precondition)
-  boundary  — engine PROVED an edge relation (`where qty == 0`) → the model drives it
-  internal  — the distinction sits behind a DERIVED LOCAL → certified abstention (never spin)
-  author    — nothing derived; you supply what only you know
+The kinds, in Detective's priority order — which is also the DIFFICULTY LADDER the model
+bake-off was built around (who can supply the input this step needs):
+  witness   — [tier 1: pure script] engine already RAN the input; paste it as --input, no model
+  test      — [tier 4: purposivistic] the witness is a captured OBJECT, not a typeable literal → human
+  lines     — [tier 2: any dolt]  a dark line outranks an edge (coverage precedes kills); the model's staple
+  boundary  — [tier 3: complex-but-obvious] engine PROVED an edge (`where qty == 0`) → the model drives it,
+              the tier the bake-off qualified qwen3:4b for
+  internal  — [tier 4: purposivistic] sits behind a DERIVED LOCAL → certified abstention (never spin)
+  author    — [tier 4: purposivistic] nothing derived; you supply the value only you know
 """
 from __future__ import annotations
 
