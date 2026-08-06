@@ -112,16 +112,19 @@ class TestMining:
 
 # ── enumerate_targets — the crawl set: skip tests, keep source order ──────────
 class TestEnumerateTargets:
-    def test_skips_tests_dunders_and_keeps_source_order(self, tmp_path):
+    def test_plucks_functions_and_methods_skips_tests_dunders_nested(self, tmp_path):
         (tmp_path / "mod.py").write_text(
             "def alpha():\n    pass\n\n"
             "def __hidden():\n    pass\n\n"
+            "class Box:\n    def open(self):\n        pass\n    def __init__(self):\n        pass\n\n"
             "def beta():\n    def nested():\n        pass\n    return nested\n"
         )
         (tmp_path / "test_mod.py").write_text("def test_alpha():\n    pass\n")
         (tmp_path / "conftest.py").write_text("def fixture_thing():\n    pass\n")
         targets = list(enumerate_targets(tmp_path, tmp_path))
-        assert targets == ["mod.py::alpha", "mod.py::beta"]        # order, no dunder/nested/tests
+        # source order; a top-level class contributes its methods as Class.method;
+        # dunders (__hidden, __init__), a nested local, and test files are all skipped
+        assert targets == ["mod.py::alpha", "mod.py::Box.open", "mod.py::beta"]
 
 
 # ── diff-mode pure core — parse a diff, map ranges to functions ───────────────

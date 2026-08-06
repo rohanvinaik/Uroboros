@@ -146,6 +146,10 @@ Uroboros scopes work at exactly three levels, and deliberately stops at the seco
   Detective captures arguments from one real test you write (its `--input` refuses what it can't parse).
 - Impurity handling today is **detect-and-route**, plus Detective's `--clock` for the wall clock.
   Filesystem/env fixtures are the fixture queue's job (Detective issue #24).
-- The stage-2 crawl (`enumerate_targets`) plucks **module-level functions only** — methods inside a
-  class are currently skipped. Detective itself *does* accept `file.py::Class.method` targets
-  (verified), so this is a fillable gap in the pluck, not a hard limit of the engine.
+- The stage-2 crawl (`enumerate_targets`) plucks module-level functions **and** the methods of
+  top-level classes (`file.py::Class.method`, which Detective accepts). It does NOT descend into
+  nested classes or async defs — the same gaps the module-level pass has. A further honest limit is
+  Detective-side, not Uroboros's: a method that needs a *constructed receiver* (a real `self`
+  instance) is a domain object the synthesizer can't invent, so such methods surface as
+  `unclosed` / `needs-input` rather than pinned — the crawl makes them VISIBLE, which is the win,
+  but closing them is a hand-written test (or a Detective receiver-synthesis improvement).

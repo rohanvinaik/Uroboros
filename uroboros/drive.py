@@ -32,10 +32,14 @@ def det(cmd, target, root, *extra, wall=CONVERGE_WALL):
 
 
 def enumerate_targets(path: Path, root: Path):
-    """Top-level functions in a .py file, or across every .py under a dir.
+    """Every function to crawl in a .py file, or across every .py under a dir.
 
-    Skips dunder and test files — the crawl refactors source, not its own tests.
-    Yields 'relpath::func' strings in source order (a stable, cheap-first-ish crawl).
+    Yields module-level functions AND the methods of top-level classes, as
+    'relpath::func' / 'relpath::Class.method' strings in source order (Detective
+    accepts the dotted method target — verified). Skips dunder names and test
+    files — the crawl refactors source, not its own tests, and not the
+    `__init__`-style hooks. (Nested classes and async defs are not descended —
+    the same gaps the module-level pass already has; see ARCHITECTURE stage 2.)
     """
     files = [path] if path.is_file() else sorted(path.rglob("*.py"))
     for f in files:
@@ -49,6 +53,10 @@ def enumerate_targets(path: Path, root: Path):
         for node in tree.body:
             if isinstance(node, ast.FunctionDef) and not node.name.startswith("__"):
                 yield f"{rel}::{node.name}"
+            elif isinstance(node, ast.ClassDef):
+                for sub in node.body:
+                    if isinstance(sub, ast.FunctionDef) and not sub.name.startswith("__"):
+                        yield f"{rel}::{node.name}.{sub.name}"
 
 
 # ── diff-mode: the pitched "churn before push" crawl set ──────────────────────
