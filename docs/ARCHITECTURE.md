@@ -117,6 +117,27 @@ and no-Ollama both degrade to the deterministic pass.
 - **unclosed pure gap** — one branch the model couldn't reach; glance at the line.
 - **candidate-equivalent** — undecidable survivors; optional `detective flag`.
 
+## The three stages of scope (unit → codebase → fleet)
+
+Uroboros scopes work at exactly three levels, and deliberately stops at the second:
+
+1. **The function — the unit (stage 1).** One function is driven to a pinned suite or a labelled
+   residual by the DO-THIS loop (`process_function`). *Within* a function the loop is necessarily
+   SERIAL: each `converge --input` pass consumes the previous pass's result, so there is nothing
+   to parallelize and it would be wrong to try.
+
+2. **The codebase — the traversal (stage 2, built).** `enumerate_targets` plucks the functions
+   from a file or directory (stdlib `ast`, source order, tests/dunders skipped) and the crawl runs
+   them ONE AT A TIME TO COMPLETION — function A fully pinned before B begins. This is exactly what
+   `uroboros src/` already does. Serial by design: the mutant state lives in memory and a function
+   is stateless or stateful depending on the step, so one-at-a-time keeps the state handling
+   tractable. (Plucking is `ast`, not an external linter — a linter walks the same tree internally.)
+
+3. **The fleet — concurrency (stage 3, deliberately unbuilt).** K workers on *different* functions
+   AT ONCE. The in-memory mutant state, the AST rewrites, and the stateful/stateless-per-step model
+   make the coordination cost wildly disproportionate to the speed-up on an already-cheap crawl
+   (CPU-bound Detective + one small resident model). Out of scope by choice, not oversight.
+
 ## Boundaries (honest limits)
 
 - The unit is **one function** (Detective's own law — "anything that scales with the repository is a
@@ -125,3 +146,6 @@ and no-Ollama both degrade to the deterministic pass.
   Detective captures arguments from one real test you write (its `--input` refuses what it can't parse).
 - Impurity handling today is **detect-and-route**, plus Detective's `--clock` for the wall clock.
   Filesystem/env fixtures are the fixture queue's job (Detective issue #24).
+- The stage-2 crawl (`enumerate_targets`) plucks **module-level functions only** — methods inside a
+  class are currently skipped. Detective itself *does* accept `file.py::Class.method` targets
+  (verified), so this is a fillable gap in the pluck, not a hard limit of the engine.
