@@ -35,9 +35,19 @@ import argparse
 import sys
 from pathlib import Path
 
-from .drive import changed_targets, det, enumerate_targets
+from .drive import (
+    _git_dirty,
+    _lint_count,
+    _lint_regressed,
+    _new_tracked_writes,
+    changed_targets,
+    det,
+    enumerate_targets,
+    verify_engine,
+)
 from .nextstep import derive_next_step
-from .preflight import check as preflight_check, report as preflight_report
+from .preflight import check as preflight_check
+from .preflight import report as preflight_report
 from .synth import _function_source, synthesize_inputs
 
 MODEL = "qwen3:4b-instruct-2507-q4_K_M"
@@ -67,7 +77,8 @@ def _ollama_up() -> bool:
 
 def _bounded_synth(state, source, func, model, focus_items):
     """synthesize_inputs with a hard wall so one slow generation can't stall the crawl."""
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FT
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FT
     with ThreadPoolExecutor(max_workers=1) as ex:
         try:
             return ex.submit(synthesize_inputs, state, source, func, model, focus_items).result(timeout=CALL_WALL)
@@ -101,8 +112,21 @@ def process_function(target, root, model, apply_decompose, use_model):
         r["state"] = f"error:diagnose:{err}"
         return r
     if diag.get("decompose_seams") and apply_decompose:
+        fpath = root / file
+        before_src = fpath.read_text() if fpath.exists() else None
+        lint_before = _lint_count(file, root)
         _, derr = det("decompose", target, root, "--apply", stream=True)
-        r["decomposed"] = derr is None
+        applied = derr is None
+        # Post-apply verify: Detective PROVED the split behaviour-preserving before writing it,
+        # but proven is not clean — a dropped annotation can red the repo's own lint gate. Re-lint
+        # and REVERT on regression, so a hands-off crawl never leaves the tree failing its own CI.
+        if applied and before_src is not None and _lint_regressed(lint_before, _lint_count(file, root)):
+            fpath.write_text(before_src)
+            r["decomposed"] = "reverted"
+            print("  ↩ decomposition reverted: behaviour-preserving but reds the repo's lint gate "
+                  "— proposed, not applied")
+        else:
+            r["decomposed"] = applied
     elif diag.get("decompose_seams"):
         r["decomposed"] = "available"
 
@@ -229,18 +253,27 @@ def main():
         targets = [a.path]
     else:
         targets = list(enumerate_targets(Path(a.path).resolve(), root))
+    # Verify the resolved engine can import the code before crawling: a repo's own .venv can be
+    # stale/incomplete (deps behind its lock, or a bare venv beside a conda-run repo), and then the
+    # suite silently fails to collect and every function reads as unpinned. Fall back to the global
+    # engine loudly instead. A sample target file exercises the whole dependency chain.
+    if targets:
+        verify_engine(root, root / targets[0].split("::")[0])
     print(f"crawl: {len(targets)} function(s) · model={'off' if not use_model else a.model.split(':')[0]} "
           f"· decompose={'apply' if a.apply else 'report'}{f' · diff={a.diff}' if a.diff else ''}\n")
     print(f"{'function':<32} {'state':<16} {'kill':>7} {'model':>5} {'c-eq':>5} {'seam':>6}")
     print("-" * 78)
 
+    # Baseline for the crawl-integrity guard: snapshot AFTER regime (so its pyproject edit is not
+    # flagged), so anything new outside tests/ afterward is a side effect of running the suite.
+    dirty_before = _git_dirty(root)
     rows = []
     for i, t in enumerate(targets, 1):
         print(f"\n[{i}/{len(targets)}] {t.split('::')[-1]}")   # heartbeat: where it is, that it's alive
         r = process_function(t, root, a.model, a.apply, use_model)
         rows.append(r)
         short = r["target"].split("::")[-1][:30]
-        seam = "yes" if r["decomposed"] is True else ("avail" if r["decomposed"] else "-")
+        seam = {True: "yes", "available": "avail", "reverted": "rvrt"}.get(r["decomposed"], "-")
         kill = f"{r['killed']}/{r['total']}" if r["total"] else "-"
         print(f"{short:<32} {r['state']:<16} {kill:>7} {r['model_calls']:>5} {r['candidate_equiv']:>5} {seam:>6}")
 
@@ -267,6 +300,19 @@ def main():
     print(f"· candidate-equivalent (Tier-2 flag queue): {ceq} mutant(s) across {sum(1 for r in rows if r['candidate_equiv'])} fn")
     if errored:
         print(f"✗ errored:                    {len(errored)}   {[r['target'].split('::')[-1] for r in errored]}")
+
+    # Crawl-integrity guard: the repo's own suite may write to the tree (a test that rewrites a
+    # data/ fixture, drops files under the root). Surface those so they aren't mistaken for the
+    # crawl's intended output — a crawl should never silently mutate the tree it was pointed at.
+    intruders = _new_tracked_writes(dirty_before, _git_dirty(root))
+    if intruders:
+        print(f"\n⚠ the crawl mutated {len(intruders)} path(s) OUTSIDE tests/ — the repo's own suite "
+              f"wrote to the tree:")
+        for p in intruders[:8]:
+            print(f"     {p}")
+        if len(intruders) > 8:
+            print(f"     … and {len(intruders) - 8} more")
+        print("  review/revert these before trusting the diff (an impure test, not a Uroboros edit).")
 
 
 if __name__ == "__main__":

@@ -95,6 +95,110 @@ def _resolve_engine(root):
     return prefix, cwd
 
 
+# ── verify the resolved env can actually import the code ──────────────────────────────
+# The ladder picks the repo's own env when it isolates deps, but a `.venv` existing does not
+# mean it's COMPLETE: it can be behind its lock, or a vestige of a repo really run under conda
+# (a bare venv missing numpy/scipy). Then the engine imports nothing, the suite can't collect,
+# and every function reads as unpinned — a silent, wrong "no tests reach it". So before the
+# crawl, probe: can the chosen env import a real target file (running its top-level imports,
+# i.e. its whole dependency chain)? If a NON-global engine can't, fall back to the global one
+# so the crawl degrades loudly. General: it keys on an actual import failure, not on any repo
+# convention (uv/conda/poetry/stale-venv all surface the same way).
+
+_PROBE_FALLBACK_NOTE = (
+    "⚠ the resolved environment for {root}\n"
+    "  cannot import its own source ({file} → a missing dependency: {miss}). Its test suite\n"
+    "  would fail to collect and functions would read as unpinned, so falling back to the global\n"
+    "  engine for this crawl. If the repo's deps live in its venv, sync it (e.g. `uv sync`) and\n"
+    "  re-run for full fidelity."
+)
+
+
+def _probe_python(prefix):
+    """Pure: the python invocation parallel to an engine prefix — swap the trailing
+    `detective` for `python`, so a probe runs in exactly the ENGINE's environment. Handles the
+    three shapes the ladder emits: `[detective]` / `[uv, run, …, detective]` (last token is the
+    literal `detective`) and a resolved `[…/bin/detective]` path."""
+    last = prefix[-1]
+    if last == "detective":
+        return [*prefix[:-1], "python"]
+    if last.endswith("/detective"):
+        return [last.removesuffix("detective") + "python"]
+    return [*prefix, "python"]
+
+
+def _dotted_module(sample_file, roots):
+    """Pure: (path entry, dotted module name) to import `sample_file` AS PART OF ITS PACKAGE —
+    the entry is the deepest source root that CONTAINS the file (so a `src/` layout imports
+    `pkg.mod`, not `src.pkg.mod`), the name is its path under that root with `/`→`.` and `.py`
+    stripped. Importing by dotted name — rather than loading the file standalone — runs the
+    package's `__init__`, resolves relative imports, and so exercises transitive deps (a bare
+    `spec_from_file_location` load dies on the file's own `from .` before reaching them). None
+    if no root contains the file."""
+    f = Path(sample_file).resolve()
+    best = None
+    for r in roots:
+        rp = Path(r).resolve()
+        try:
+            rel = f.relative_to(rp)
+        except ValueError:
+            continue
+        depth = len(rp.parts)
+        if best is None or depth > best[0]:
+            best = (depth, str(rp), ".".join(rel.with_suffix("").parts))
+    return (best[1], best[2]) if best else None
+
+
+def _missing_import(prefix, cwd, sample_file, roots):
+    """Impure: the module the engine's env is MISSING in order to import `sample_file`'s module
+    (running its package `__init__` + top-level imports — the whole dependency chain), or None
+    if it imports fine OR we can't tell (no containing root, a timeout, no python, or a non-import
+    error) → never a spurious fall-back. Puts the source roots on `sys.path`, as the engine's
+    regime does, then imports the module by dotted name. A miss that is the module's OWN top
+    package is a layout/path mismatch, not a missing dependency, and is ignored (the global engine
+    would fail it the same way); a miss of a real third-party dep (numpy, chess) triggers fallback."""
+    target = _dotted_module(sample_file, roots)
+    if target is None:
+        return None
+    _, dotted = target
+    py = _probe_python(prefix)
+    path_inject = ",".join(repr(str(r)) for r in roots)
+    code = (
+        "import importlib, sys\n"
+        f"sys.path[:0]=[{path_inject}]\n"
+        f"importlib.import_module({dotted!r})\n"
+    )
+    try:
+        p = subprocess.run([*py, "-c", code], capture_output=True, text=True, timeout=60,
+                           cwd=cwd, env={**os.environ, "PYTHONWARNINGS": "ignore"}, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if p.returncode == 0:
+        return None
+    miss = None
+    for ln in p.stderr.splitlines():
+        if "ModuleNotFoundError" in ln and "'" in ln:
+            miss = ln.split("'")[1]
+    if miss is None or miss == dotted.split(".")[0]:
+        return None
+    return miss
+
+
+def verify_engine(root, sample_file):
+    """Probe the resolved engine against a real target file; if a NON-global engine can't
+    import it (a stale/incomplete repo env), overwrite the cached resolution with the global
+    engine and say so. Idempotent — call once at crawl start, after the targets are known."""
+    key = str(root)
+    prefix, cwd = _resolve_engine(root)
+    if prefix == ["detective"]:            # already global — nothing better to fall back to
+        return
+    miss = _missing_import(prefix, cwd, sample_file, [*_source_roots(Path(root)), Path(root)])
+    if miss is None:
+        return
+    print(_PROBE_FALLBACK_NOTE.format(root=key, file=sample_file, miss=miss))
+    _ENGINE_CACHE[key] = (["detective"], None)
+
+
 def det(cmd, target, root, *extra, wall=CONVERGE_WALL, stream=False):
     """Run one detective subcommand with --json. Returns (parsed, error_str).
 
@@ -291,4 +395,72 @@ def changed_targets(root: Path, base: str = "HEAD"):
             continue
         for func in _functions_in_ranges(source, spans):
             yield f"{rel}::{func}"
+
+
+# ── crawl-integrity guard: a crawl must not silently mutate the tree ───────────────────
+# Converge runs the repo's OWN suite to trace the baseline. If a test writes to the filesystem
+# (a `data/` fixture it rewrites, a `session_universe/` dir it drops under the repo root), the
+# crawl mutates the tree — neither the tests it means to write nor a decomposition it applied.
+# Snapshotting git before/after surfaces those side effects instead of leaving them in the diff.
+
+def _git_dirty(root) -> set:
+    """Impure: the set of paths git reports dirty (modified or untracked) under `root`.
+    Best-effort — an empty set when not a git repo or git is unavailable, so the guard never
+    breaks a crawl; it only ADDS a warning when it can actually see the tree change."""
+    try:
+        p = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                           capture_output=True, text=True, timeout=30, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    if p.returncode != 0:
+        return set()
+    paths = set()
+    for ln in p.stdout.splitlines():
+        # porcelain: 2-char status, a space, then the path ("orig -> new" for a rename).
+        path = ln[3:].split(" -> ")[-1].strip().strip('"')
+        if path:
+            paths.add(path)
+    return paths
+
+
+def _new_tracked_writes(before, after) -> list:
+    """Pure: paths dirtied DURING the crawl (in `after`, not `before`) that are NOT the crawl's
+    own outputs — outside `tests/` and `.detective/`, and not bytecode. These are side effects of
+    running the repo's own suite, which a crawl should SURFACE, not silently leave behind. Snapshot
+    `before` AFTER the regime pass, so its declared pyproject edit is not mistaken for one."""
+    grown = set(after) - set(before)
+    return sorted(p for p in grown
+                  if not (p.startswith(("tests/", ".detective/")) or "__pycache__" in p))
+
+
+# ── post-apply verify: proven-preserving is not the same as clean ─────────────────────
+# `decompose --apply` proves a split behaviour-preserving before writing it, but proven is not
+# mergeable: the rewritten source can still red the repo's OWN lint gate (e.g. an extracted
+# helper that dropped its type annotations). A hands-off crawl must never leave the tree failing
+# its own CI, so re-lint after applying and revert on a regression.
+
+def _lint_count(file, root):
+    """Impure: how many findings the repo's own `ruff` reports for one file, or None if ruff
+    isn't available (then there is no gate to hold to). Measured against the PROJECT's ruff
+    config, not a fixed ruleset — the gate is whatever the repo's CI already enforces."""
+    ruff = shutil.which("ruff")
+    if not ruff:
+        return None
+    try:
+        p = subprocess.run([ruff, "check", "--output-format", "json", str(Path(root) / file)],
+                           capture_output=True, text=True, timeout=60, cwd=str(root), check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    try:
+        return len(json.loads(p.stdout))
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _lint_regressed(before, after) -> bool:
+    """Pure: did applying the decomposition introduce NEW lint findings? True ONLY when both
+    counts are known and the count GREW. An unknown count (no linter present) or a non-increase
+    is not a regression — the split must red the repo's OWN gate to be reverted, and we never
+    invent a gate the repo does not run."""
+    return before is not None and after is not None and after > before
 
