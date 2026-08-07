@@ -425,12 +425,14 @@ def _git_dirty(root) -> set:
 
 def _new_tracked_writes(before, after) -> list:
     """Pure: paths dirtied DURING the crawl (in `after`, not `before`) that are NOT the crawl's
-    own outputs — outside `tests/` and `.detective/`, and not bytecode. These are side effects of
-    running the repo's own suite, which a crawl should SURFACE, not silently leave behind. Snapshot
-    `before` AFTER the regime pass, so its declared pyproject edit is not mistaken for one."""
+    own outputs — outside `tests/` and the engines' own artifact dirs (`.detective/`, `.wesker/`),
+    and not bytecode. These are side effects of running the repo's own suite, which a crawl should
+    SURFACE, not silently leave behind. Snapshot `before` AFTER the regime pass, so its declared
+    pyproject edit is not mistaken for one. (Found by a random-repo sweep: `.wesker/`, the mutation
+    engine's cache, was being false-flagged as a repo side effect.)"""
     grown = set(after) - set(before)
     return sorted(p for p in grown
-                  if not (p.startswith(("tests/", ".detective/")) or "__pycache__" in p))
+                  if not (p.startswith(("tests/", ".detective/", ".wesker/")) or "__pycache__" in p))
 
 
 # ── post-apply verify: proven-preserving is not the same as clean ─────────────────────
