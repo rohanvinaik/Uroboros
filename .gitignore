@@ -5,3 +5,4 @@ __pycache__/
 .detective/
 .wesker/
 .pytest_cache/
+.lintgate/

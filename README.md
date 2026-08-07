@@ -45,6 +45,8 @@ def test_quote_value_1():
 
 The functions that most need cleaning are the ones nobody touches, because the only safety net — the tests someone thought to write — checks a handful of cases, and everyone knows it. A mutation-complete suite is a different object: it fails on any change to what the function computes. That turns cleanup from a bet into a mechanical operation, and it turns the suite into a behavioural lockfile — you, a colleague, or a model can rewrite the function freely, and green means identical.
 
+This is the discipline of provable composition — small pieces, pinned behaviour, tangles split only at proven seams — run as a background process instead of held by hand. [Detective](https://github.com/rohanvinaik/Detective) makes that a command you drive, one function at a time; Uroboros drives it for you, across a whole repository, until there is nothing left to prove. It is the *Structure and Interpretation* method, running itself: deterministic, CPU-only, no model anywhere in the loop that could wander off and rewrite your logic.
+
 ## The model never drives
 
 You can leave Uroboros running on your source because the part that could go wrong has no room to. The loop is deterministic; a small local model is woken at exactly one step — when reaching a branch needs one specific input value — and it does nothing else. It never writes code, never chooses what runs next, never sees your source as something to rewrite. It selects values into a per-function JSON schema mined from the branches themselves, with arity and types structurally locked; the harness writes the call syntax. There is no driver's seat for it to climb into.
@@ -56,7 +58,7 @@ That one job sits on a difficulty ladder, which is why a 4B model on a laptop is
 | **1 · script** | a distinguishing call the engine already found | pasted — no model |
 | **2 · low-lift** | reach an un-executed line | the small model |
 | **3 · complex-but-obvious** | land on a *proved* boundary edge | the small model |
-| **4 · purposivistic** | a domain object, or a value only you know | **you** — it abstains and hands it back |
+| **4 · human-intent** | a domain object, or a value only you know | **you** — it abstains and hands it back |
 
 ## What comes back
 
@@ -83,6 +85,8 @@ ollama pull qwen3:4b-instruct-2507-q4_K_M
 
 | Command | Writes | Does |
 |---|---|---|
+| `uroboros .` | test files | **crawl the current repo** — its declared source, one function to completion, then the next |
+| `uroboros . --apply` | your source | same, and apply the splits it can *prove* behaviour-preserving |
 | `uroboros file.py::fn` | test files | clean and pin one function or method |
 | `uroboros src/` | test files | crawl a whole tree, one function to completion, then the next |
 | `uroboros --diff [BASE]` | test files | crawl only what changed since BASE (default HEAD) — churn before a push |
@@ -100,6 +104,7 @@ One function at a time, deterministic, narrow on purpose.
 - **It preserves behaviour, not correctness.** A proof says the rewrite does what the original did. If the original was wrong, the rewrite is wrong the same way — provably. It does not know what your code is *for*.
 - **It will not invent a domain value.** When a branch needs an object or a value whose meaning is not in the code, it hands it back (the `needs-input` bucket) rather than guess.
 - **A method needing a constructed receiver** is that same boundary — it surfaces as `needs-input` / `unclosed` rather than pinned ([#1](https://github.com/rohanvinaik/Uroboros/issues/1)).
+- **Style is Detective's job, not Uroboros's.** Whether a function is *doing too much* is a judgment, not a proof, so the crawl never acts on it — it pins and splits what is provable and hands the rest back. The advisory read (`detective parsimony`) lives one layer down, where a human or model drives it.
 
 Orientation for a contributor: [`AGENTS.md`](AGENTS.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 

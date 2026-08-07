@@ -168,6 +168,12 @@ Uroboros scopes work at exactly three levels, and deliberately stops at the seco
 
 - The unit is **one function** (Detective's own law — "anything that scales with the repository is a
   category error"). Uroboros crawls functions; it never computes a whole-repo mutant profile.
+- **SICP stylistic/epistemic decisions are out of scope — they are Detective-native.** Cohesion, the
+  right abstraction, naming, the behaviourally-overloaded split are *judgement* calls; Uroboros has
+  no strong intelligence to make them and never tries. It churns the **provable** axis (pinning +
+  proven decomposition) and routes judgement-needing residue to its review buckets. The advisory
+  read lives in Detective, driven by the human/large model at its CLI
+  (`Detective/docs/PARSIMONY_ADVISORY.md`).
 - The model closes **line-coverage** residuals. It does not invent domain objects — for those,
   Detective captures arguments from one real test you write (its `--input` refuses what it can't parse).
 - Impurity handling today is **detect-and-route**, plus Detective's `--clock` for the wall clock.
