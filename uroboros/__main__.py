@@ -1,4 +1,4 @@
-from .cycle import main
+from .harness.contract import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

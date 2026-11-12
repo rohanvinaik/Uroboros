@@ -1,0 +1,64 @@
+# daemon-judge — the judgment seat: where Detective stops for values, the model answers each item of the stop.
+#
+# CORRECTNESS-shaped, and the only place the Detective phase calls a model (the founder, 2026-10-08, FOUNDING_PROMPTS
+# [14] and [15]: «Only where Detective stops»). The prompt is one typed JSON record, `{record}`, and no sentence of the
+# harness's: the stop as Detective's own decision record gives it (its verb and code, the kind of the ask, its typed
+# items with the mutants each came from, the command to run next); the function's name and parameters; the values mined
+# from the code the stop prints (decisions.ask_pools), one pool per parameter; what the function's contract states (its
+# docstring, its intent tests, the lines it must never do); the tests Detective wrote for it so far; Detective's record
+# of the inputs already supplied; and the contract's coverage reading, beside Detective's verdict and never above it.
+# The model never sees the function's body (the founder, 2026-10-05: «It's blind and mute to my code»).
+#
+# One slot, `answers`, of kind form, held at decode time to the form its caller supplies at run time
+# (decisions.judgment_form): one answer per item of the stop, keyed by the item's index, each exactly one of
+#   supply        values for the function's parameters, typed to its signature (an untyped parameter takes any JSON value),
+#                 with the pooled values beside each type; the HARNESS writes the call syntax (decisions.render_call_args), so
+#                 a value arrives only as data, and puts each on the command Detective named next as an --input;
+#   freedom       only where the item carries the mutants it came from (a boundary or an internal condition): the mutants are
+#                 equivalent, with the reason; the harness flags exactly that item's mutants (`detective flag`);
+#   cannot_tell   null: handed back, and never asked again for that item.
+# A sample or author ask has no items and takes one answer, under "0".
+#
+# daemon.drive plays this seat as the model the play names (contract.MODELS: its name, wire, context window and
+# residency) under the call settings declared in [model] below (docs/CODING.md): the output cap, the
+# sampling, the wall and `think` are this seat's own, and win over the model's record; a key only the model's record
+# carries (a workaround of its own) stays. No context window is declared here: the seat shares the model's, which the
+# write call already loaded.
+#
+# The warrant is DOWNSTREAM: each supplied input is judged by what Detective observes it do, and a freedom by Detective's
+# own flag record; a wrong value pins nothing and costs one measurement, never a wrong record.
+
+id = "daemon-judge"
+label = "Daemon: judge what Detective stops for, as values, a freedom or cannot-tell"
+category = "correctness"
+warrant = "downstream measurement: the kill or coverage each rendered input produces under Detective's next converge, and Detective's own record of each flag; never trusted for its content"
+discharge = "downstream"
+hand_back = "domain_value"
+render = "none"
+
+[model]
+name = "qwen3-coder-next:latest"
+api = "ollama"
+format = "schema"
+think = false
+keep_alive = "30m"
+timeout_s = 180
+
+[model.options]
+temperature = 0.1
+num_predict = 1024
+
+[guards]
+# The call-level retries only (transport, unparseable): never a second judgment.
+pass_budget = 2
+
+[prompt]
+template = "prompt.md"
+answer = "none"
+
+[[slot]]
+name = "answers"
+kind = "form"
+source = "runtime"
+allow_abstain = false
+description = "one answer for each item of the stop, by its index"

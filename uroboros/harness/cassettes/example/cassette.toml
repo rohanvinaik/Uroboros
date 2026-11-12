@@ -1,0 +1,42 @@
+# Example cassette — the BUNDLED DEMO cartridge.
+#
+# A correctness-shaped toy: name which optical disc family a sentence refers to,
+# from a closed set of three, or abstain. It exists so a fresh checkout can run the
+# whole harness end to end (`uroboros-cassette run example -e description=…`) with
+# nothing private. The `synthetic` flag travels with the cartridge, so a COPY of this
+# directory is still, correctly, the demo.
+
+id = "example"
+label = "Example — name the disc family a sentence refers to (demo)"
+synthetic = true
+category = "correctness"
+warrant = "the closed three-value vocabulary below; a real caller checks the answer against the object in hand"
+discharge = "operator"
+hand_back = "domain_value"
+render = "none"
+
+[model]
+name = "qwen3:4b-instruct-2507-q4_K_M"
+format = "schema"
+think = false
+keep_alive = "10m"
+timeout_s = 120
+
+[model.options]
+temperature = 0.1
+num_ctx = 4096
+num_predict = 64
+
+[guards]
+pass_budget = 2
+
+[prompt]
+template = "prompt.md"
+
+[[slot]]
+name = "family"
+kind = "enum"
+source = "inline"
+values = ["cd", "dvd", "bluray"]
+allow_abstain = true
+description = "the optical disc family the description names"

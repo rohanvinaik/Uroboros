@@ -1,0 +1,105 @@
+{
+ "format": "uroboros.contract/1",
+ "path": "orders.py",
+ "doc": "Order arithmetic: the total of one order line, and of an order.",
+ "imports": [],
+ "objects": [],
+ "body": [
+  {
+   "function": "order_total",
+   "doc": {
+    "prose": "The total of an order: the sum of its lines' totals, each line a (quantity, unit price) pair. An empty order totals 0.0.",
+    "operations": [
+     {
+      "category": "ARITHMETIC",
+      "what": "the running sum of the line totals"
+     },
+     {
+      "category": "VALUE",
+      "what": "0.0 for an empty order"
+     }
+    ]
+   },
+   "intent_test": {
+    "source": "def test_order_total():\n    assert order_total([(2, 1.5), (1, 4.0)]) == 7.0\n    assert order_total([]) == 0.0\n    assert order_total([(3, 2.0)]) == 6.0\n\n\ndef test_order_total_depends_on_its_lines():\n    assert order_total([(1, 1.0)]) != order_total([(2, 1.0)])\n\n\ndef test_order_total_always_answers():\n    result = order_total([(1, 1.0)])\n    assert result is not None and result == 1.0\n",
+    "covers": [
+     {
+      "category": "ARITHMETIC",
+      "subject": "the sum of line_total(q, p) over the lines",
+      "operator": "Add",
+      "range": "0 to 2 lines"
+     },
+     {
+      "category": "VALUE",
+      "subject": "an empty order",
+      "operator": "",
+      "range": "[]"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the order total",
+      "operator": "const",
+      "range": "one line, quantity 1 and 2"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the order total",
+      "operator": "none",
+      "range": "one line"
+     }
+    ]
+   },
+   "objects": [],
+   "functions": [
+    {
+     "function": "line_total",
+     "doc": {
+      "prose": "The total of one order line: its quantity times its unit price.",
+      "operations": [
+       {
+        "category": "ARITHMETIC",
+        "what": "quantity times unit price"
+       }
+      ]
+     },
+     "intent_test": {
+      "source": "def test_line_total():\n    assert line_total(2, 1.5) == 3.0\n    assert line_total(0, 9.99) == 0.0\n    assert line_total(3, 0.0) == 0.0\n\n\ndef test_line_total_depends_on_both_operands():\n    assert line_total(1, 2.0) != line_total(3, 2.0)\n    assert line_total(2, 1.0) != line_total(2, 4.0)\n\n\ndef test_line_total_is_no_passthrough():\n    assert line_total(4, 2.5) != 4\n",
+      "covers": [
+       {
+        "category": "ARITHMETIC",
+        "subject": "qty * unit_price",
+        "operator": "Mult",
+        "range": "qty 0 to 3, unit_price 0.0 to 9.99"
+       },
+       {
+        "category": "OUTPUT",
+        "subject": "the line total",
+        "operator": "const",
+        "range": "qty 1 and 3, unit_price 1.0 and 4.0"
+       },
+       {
+        "category": "OUTPUT",
+        "subject": "the line total",
+        "operator": "id",
+        "range": "qty 4"
+       }
+      ]
+     },
+     "objects": [],
+     "functions": [],
+     "signature": null,
+     "code": null
+    }
+   ],
+   "signature": null,
+   "code": null
+  }
+ ],
+ "test_imports": [
+  "from orders import line_total, order_total"
+ ],
+ "detective": [
+  "regime",
+  "audit"
+ ]
+}

@@ -236,7 +236,7 @@ def det(cmd, target, root, *extra, wall=CONVERGE_WALL, stream=False):
 
 
 # Directory names that are never your source: virtualenvs, VCS, caches, build/packaging
-# trees. Without this filter, `uroboros .` rglobs into `.venv` and pins the whole of
+# trees. Without this filter, `uroboros-crawl .` rglobs into `.venv` and pins the whole of
 # site-packages — 3000+ functions of Detective/Wesker internals — which is never what
 # "crawl this repo" means. Any hidden dir (a leading dot) is excluded too.
 _SKIP_DIRS = {
@@ -272,7 +272,7 @@ def _source_roots(path: Path) -> list[Path]:
       and non-source dirs.
     * otherwise → the dir as-is (a loose-script repo).
 
-    This is why `uroboros .` on a real repo crawls the code and not `data/`, generated
+    This is why `uroboros-crawl .` on a real repo crawls the code and not `data/`, generated
     environment files, `quarantine/`, or a vendored tree sitting next to it.
     """
     if (path / "__init__.py").exists():
@@ -293,7 +293,7 @@ def enumerate_targets(path: Path, root: Path):
     Pointed at a directory, it resolves the source roots (`_source_roots`: package /
     src-layout / flat packages / fallback — robust across normal repo shapes) and
     rglobs those, skipping virtualenv / VCS / cache / build trees (`_is_source`) and
-    test files. So `uroboros .` crawls your code, never the data/, generated envs, or
+    test files. So `uroboros-crawl .` crawls your code, never the data/, generated envs, or
     vendored trees beside it. An explicit file target bypasses the resolver.
 
     METHODS ARE SKIPPED. Detective cannot yet build a receiver for a bound method

@@ -1,0 +1,72 @@
+{
+ "format": "uroboros.contract/1",
+ "path": "clamp.py",
+ "doc": "A number held to a range.",
+ "imports": [],
+ "objects": [],
+ "body": [
+  {
+   "function": "clamp",
+   "doc": {
+    "prose": "A value held between a low and a high bound: the value itself when it lies within them, the low bound when it is below, the high bound when it is above. A low bound above the high one is refused with ValueError.",
+    "operations": [
+     {
+      "category": "BOUNDARY",
+      "what": "the value against each bound"
+     },
+     {
+      "category": "EXCEPTION",
+      "what": "ValueError for a low bound above the high one"
+     }
+    ]
+   },
+   "intent_test": {
+    "source": "def test_clamp():\n    assert clamp(5, 0, 10) == 5\n    assert clamp(-3, 0, 10) == 0\n    assert clamp(12, 0, 10) == 10\n    assert clamp(0, 0, 10) == 0\n    assert clamp(10, 0, 10) == 10\n    assert clamp(2.5, 1.0, 2.0) == 2.0\n\n\ndef test_clamp_depends_on_the_value():\n    assert clamp(3, 0, 10) != clamp(7, 0, 10)\n\n\ndef test_clamp_stays_within_its_bounds():\n    for value in (-100, -1, 0, 5, 10, 11, 1000):\n        assert 0 <= clamp(value, 0, 10) <= 10\n\n\ndef test_clamp_refuses_bounds_out_of_order():\n    with pytest.raises(ValueError):\n        clamp(5, 10, 0)\n",
+    "covers": [
+     {
+      "category": "BOUNDARY",
+      "subject": "the value against the low and the high bound",
+      "operator": "Lt",
+      "range": "below, at and above each bound"
+     },
+     {
+      "category": "EXCEPTION",
+      "subject": "a low bound above the high one",
+      "operator": "Raise",
+      "range": "10 against 0"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the held value",
+      "operator": "clamp",
+      "range": "-100 to 1000 against 0 and 10"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the held value",
+      "operator": "const",
+      "range": "3 against 7"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the held value",
+      "operator": "raise",
+      "range": "bounds out of order"
+     }
+    ]
+   },
+   "objects": [],
+   "functions": [],
+   "signature": null,
+   "code": null
+  }
+ ],
+ "test_imports": [
+  "import pytest",
+  "from clamp import clamp"
+ ],
+ "detective": [
+  "regime",
+  "audit"
+ ]
+}

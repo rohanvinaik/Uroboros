@@ -199,7 +199,7 @@ def process_function(target, root, model, apply_decompose, use_model):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Set-and-forget Detective refactor crawler.")
+    ap = argparse.ArgumentParser(prog="uroboros-crawl", description="Set-and-forget Detective refactor crawler.")
     ap.add_argument("path", nargs="?", help="a .py file, a dir, or file.py::func")
     ap.add_argument("--project-root", default=".")
     ap.add_argument("--apply", action="store_true", help="APPLY proven-safe decompositions (rewrites source)")
@@ -223,7 +223,7 @@ def main():
     if not a.path and not a.diff:
         ap.error("a path is required (or use --diff / --check)")
     if not preflight_check(a.model)["detective/wesker"][0]:
-        print("✗ Detective not found — run `uroboros --check` for setup help.", file=sys.stderr)
+        print("✗ Detective not found — run `uroboros-crawl --check` for setup help.", file=sys.stderr)
         return 1
     root = Path(a.project_root).resolve()
 

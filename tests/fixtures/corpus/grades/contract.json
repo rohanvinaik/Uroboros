@@ -1,0 +1,115 @@
+{
+ "format": "uroboros.contract/1",
+ "path": "grades.py",
+ "doc": "Exam scores against a pass mark.",
+ "imports": [],
+ "objects": [
+  {
+   "object": "PASS_MARK",
+   "doc": "The pass mark.",
+   "intent": "50",
+   "used_by": [
+    "pass_rate.passes"
+   ],
+   "value": null
+  }
+ ],
+ "body": [
+  {
+   "function": "pass_rate",
+   "doc": {
+    "prose": "The pass rate of a set of scores: the fraction of them that pass, as passes decides, from 0.0 to 1.0. No scores give a rate of 0.0.",
+    "operations": [
+     {
+      "category": "ARITHMETIC",
+      "what": "the passing count over the count"
+     },
+     {
+      "category": "BOUNDARY",
+      "what": "no scores"
+     }
+    ]
+   },
+   "intent_test": {
+    "source": "def test_pass_rate():\n    assert pass_rate([50, 49, 100, 0]) == 0.5\n    assert pass_rate([]) == 0.0\n    assert pass_rate([80]) == 1.0\n    assert pass_rate([10, 20, 30]) == 0.0\n\n\ndef test_pass_rate_depends_on_the_scores():\n    assert pass_rate([60, 60]) != pass_rate([60, 40])\n\n\ndef test_pass_rate_stays_a_fraction():\n    for scores in ([], [0], [100], [0, 100], [50] * 7):\n        assert 0.0 <= pass_rate(scores) <= 1.0\n",
+    "covers": [
+     {
+      "category": "ARITHMETIC",
+      "subject": "the passing count over the count",
+      "operator": "Div",
+      "range": "0 to 4 scores"
+     },
+     {
+      "category": "BOUNDARY",
+      "subject": "no scores",
+      "operator": "Not",
+      "range": "[]"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the rate",
+      "operator": "const",
+      "range": "two passing against one"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the rate",
+      "operator": "clamp",
+      "range": "0.0 to 1.0"
+     }
+    ]
+   },
+   "objects": [],
+   "functions": [
+    {
+     "function": "passes",
+     "doc": {
+      "prose": "Whether a score passes: a score at or above the pass mark passes.",
+      "operations": [
+       {
+        "category": "BOUNDARY",
+        "what": "the score against PASS_MARK"
+       }
+      ]
+     },
+     "intent_test": {
+      "source": "def test_passes():\n    assert passes(50) is True\n    assert passes(49) is False\n    assert passes(100) is True\n    assert passes(0) is False\n    assert passes(49.5) is False\n\n\ndef test_passes_depends_on_the_score():\n    assert passes(10) != passes(90)\n\n\ndef test_passes_is_a_bool():\n    assert isinstance(passes(75), bool)\n",
+      "covers": [
+       {
+        "category": "BOUNDARY",
+        "subject": "the score against PASS_MARK",
+        "operator": "GtE",
+        "range": "49, 49.5, 50"
+       },
+       {
+        "category": "OUTPUT",
+        "subject": "the verdict",
+        "operator": "const",
+        "range": "10 against 90"
+       },
+       {
+        "category": "OUTPUT",
+        "subject": "the verdict",
+        "operator": "type",
+        "range": "75"
+       }
+      ]
+     },
+     "objects": [],
+     "functions": [],
+     "signature": null,
+     "code": null
+    }
+   ],
+   "signature": null,
+   "code": null
+  }
+ ],
+ "test_imports": [
+  "from grades import passes, pass_rate"
+ ],
+ "detective": [
+  "regime",
+  "audit"
+ ]
+}

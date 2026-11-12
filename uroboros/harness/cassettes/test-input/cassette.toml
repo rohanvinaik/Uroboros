@@ -1,0 +1,63 @@
+# test-input — the bake-off, as a cassette.
+#
+# A clean port of the model step from the Detective bake-off
+# (`deterministic_cpu_clean_code.md`, `~/detective-bakeoff/`) and Uroboros's
+# `synth.synthesize_inputs`. Given a pure function's signature, source and a
+# requirement (a line to reach, a boundary to land on), the model SELECTS argument
+# values into an arity-locked skeleton. Each call is an object keyed by parameter,
+# every parameter required, no extras. Each value comes from the pool the caller
+# mined from the function's own literals, or from a type-locked wildcard. The
+# HARNESS writes the call syntax (render = "python_call_args": JSON → repr →
+# ast.literal_eval), so an input can only ever arrive as data.
+#
+# CORRECTNESS-shaped, with one principled opening: the wildcard is admissible because
+# the warrant is DOWNSTREAM. Each input is judged by the mutation kill it produces,
+# never trusted for its content, and a wrong input is harmless — it just pins
+# nothing (THE_DYAD II.4).
+#
+# THE CALLER OWES COMPLETE EVIDENCE. Measured 2026-09-11 on harness.decisions.next_move:
+# with a source that read `_RETRYABLE` but omitted its definition, the model filled the
+# type-locked wildcard with an invented code ("retryable") and missed both targets.
+# With the constant prepended, every argument came from the mined pool, the
+# `stop_no_progress` target was reached 3/3, and `retry` was missed 3/3 — the
+# measurement (not the model) says what the next --input must be. The typed hole
+# cannot supply what the evidence left out; the source must carry every module-level
+# name the function reads.
+#
+# The bake-off's variables live here, not in code: the model (the winner, 2.5 GB,
+# which matched a 36 B reference), format = schema, think = false, temperature 0.1,
+# an explicit context, the per-call wall, and a two-pass budget with a no-progress stop.
+
+id = "test-input"
+label = "Test-input synthesis: select arguments that reach a branch (the bake-off, ported)"
+category = "correctness"
+warrant = "downstream measurement: the mutation kill each rendered input produces under `detective converge --input`. A wrong input pins nothing; it is never trusted for its content."
+discharge = "downstream"
+hand_back = "domain_value"
+render = "python_call_args"
+
+[model]
+name = "qwen3:4b-instruct-2507-q4_K_M"
+format = "schema"
+think = false
+keep_alive = "10m"
+timeout_s = 180
+
+[model.options]
+temperature = 0.1
+num_ctx = 8192
+num_predict = 400
+
+[guards]
+pass_budget = 2
+
+[prompt]
+template = "prompt.md"
+
+[[slot]]
+name = "calls"
+kind = "call_objects"
+source = "runtime"
+allow_abstain = true
+max_items = 6
+description = "between them: a normal case, an edge/boundary case, and any raise or rare branch"

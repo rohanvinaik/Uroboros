@@ -1,0 +1,33 @@
+id = "receiver"
+label = "Classify a coding-line hand-back"
+category = "correctness"
+warrant = "Detective evaluates any new fill or replay. Contract questions return to the author."
+discharge = "downstream"
+hand_back = "domain_value"
+render = "none"
+
+[model]
+name = "qwen3.5:4b"
+api = "ollama"
+format = "schema"
+think = false
+keep_alive = "5m"
+timeout_s = 180
+
+[model.options]
+temperature = 0
+num_predict = 64
+
+[guards]
+pass_budget = 1
+
+[prompt]
+template = "prompt.md"
+answer = "none"
+
+[[slot]]
+name = "decision"
+kind = "enum"
+source = "runtime"
+allow_abstain = false
+description = "code_wrong, contract_wrong, machine_wrong, or cannot_tell"

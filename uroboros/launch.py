@@ -9,7 +9,7 @@ no file access, no tool calls — so it cannot wander off and start editing your
 is what a free-form agent loop lets a 4B model do.
 
 When the model selects `run_uroboros`, the HARNESS (not the model) runs Uroboros over the
-current repo and streams the crawl live. The DEFAULT is report-mode (`uroboros .`: writes
+current repo and streams the crawl live. The DEFAULT is report-mode (`uroboros-crawl .`: writes
 tests, reports seams, never touches source); `--apply` is added ONLY when the model set
 `apply` from an EXPLICIT rewrite request — a hands-off launcher must not rewrite your source
 on a bare "run it". The model decides *whether* and *report-vs-apply*; it never composes the
@@ -75,19 +75,19 @@ def decide(history: list[dict], model: str = MODEL) -> tuple[str, bool, bool]:
 
 
 def _launch_argv(root, apply: bool) -> list[str]:
-    """Pure: the exact command the harness runs. Report by default (`uroboros .` — writes
+    """Pure: the exact command the harness runs. Report by default (`uroboros-crawl .` — writes
     tests, reports seams, never touches source); the source-rewriting `--apply` is present
     ONLY when the model set `apply` from an explicit ask. The model flips the flag; it never
     composes the command — so a bare "run uroboros" can never rewrite your source."""
     apply_flag = ["--apply"] if apply else []
-    return ["uroboros", ".", *apply_flag, "--project-root", str(root)]
+    return ["uroboros-crawl", ".", *apply_flag, "--project-root", str(root)]
 
 
 def run_uroboros(root: Path, apply: bool = False) -> int:
     """The harness runs the ONE command `_launch_argv` composes and streams its progress
     live. The model never composes this — it only selects report-vs-apply."""
     argv = _launch_argv(root, apply)
-    print(f"\n── uroboros .{' --apply' if apply else ''} · {root} ──\n", flush=True)
+    print(f"\n── uroboros-crawl .{' --apply' if apply else ''} · {root} ──\n", flush=True)
     proc = subprocess.Popen(
         argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(root),
     )

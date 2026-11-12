@@ -1,6 +1,6 @@
 version = 1
 revision = 3
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [[package]]
 name = "colorama"
@@ -13,16 +13,16 @@ wheels = [
 
 [[package]]
 name = "detective-spec"
-version = "0.10.2"
+version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "wesker" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/63/38a93890ea64fde2bd13e6fb576b72f3e8c021b410e613b8d9c986439078/detective_spec-0.10.2.tar.gz", hash = "sha256:d8efd9dca47ea3c13393c5d78625526417f40657b039a788d197645a1a45f1e6", size = 416693, upload-time = "2026-08-05T15:44:47.229Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/32/8d/20cdd69079c5111da9cbd9304b6e1267a988b01f2b83b2fbf1fce119db3e/detective_spec-1.2.2.tar.gz", hash = "sha256:f0a19456df1b2d719f42f4413e7c4c8d7357f263b873256e2107033ddab759d7", size = 2179102, upload-time = "2026-10-24T08:38:31.707Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/56/2b/c800e93f6f140cfb3c8997259794a9d860d2cdd17894680004cb06651a24/detective_spec-0.10.2-py3-none-any.whl", hash = "sha256:1bfda3885053c8fad15fb9eca7b6652ab3e91d61dca44e461c515bf8de300a8c", size = 252520, upload-time = "2026-08-05T15:44:44.472Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/e0/6a89fbe0327803a8f9b95fde1a93b1d5ef3f0c9f2fe1aef580383d022fc2/detective_spec-1.2.2-py3-none-any.whl", hash = "sha256:96299335c5fde3681aa603acc98193a092ec50b78a6e72c86005a3a9355fd1e7", size = 703130, upload-time = "2026-10-24T08:38:29.627Z" },
 ]
 
 [[package]]
@@ -117,16 +117,16 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "detective-spec", specifier = ">=0.10.2" },
+    { name = "detective-spec", specifier = ">=1.2.2,<2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
 ]
 provides-extras = ["dev"]
 
 [[package]]
 name = "wesker"
-version = "0.11.2"
+version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d5/a9/3c2d20a1a69d7561ddbc9ee2476fa9e75acfeabdb8fa432e5df654aaf402/wesker-0.11.2.tar.gz", hash = "sha256:22ee44da03c49a310d08011e8366f658dae31473921d1fa140bf62d2a1ead2d3", size = 360827, upload-time = "2026-08-05T17:42:34.864Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/28/4e/58000d8b3969281d15233aa7dd9ac666a26effb145bd33b42952ebd090de/wesker-1.2.2.tar.gz", hash = "sha256:8a075f8eb59416a218441cb1ed616b1cb044196ac59866ef48ffb56bdc53218f", size = 552597, upload-time = "2026-10-24T08:38:21.896Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/c4/b60ceb06337f74fa7debd60ba48c9071b650e8d9347e960316a72810d481/wesker-0.11.2-py3-none-any.whl", hash = "sha256:ad2e007f2be84c10cf1e322a198d3e65aa2f8deb96ef8556243d85dafee90a19", size = 162003, upload-time = "2026-08-05T17:42:24.008Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/be/eb4e21c6fc48dbd87503f4f8f4240470a6692ef7d2cdec52fe2fa9633cd4/wesker-1.2.2-py3-none-any.whl", hash = "sha256:848403927e22e8ec32f0698756a56133c5c95079a216a66ae20dc4954a7f8411", size = 332548, upload-time = "2026-10-24T08:38:20.45Z" },
 ]

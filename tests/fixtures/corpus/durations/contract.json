@@ -1,0 +1,66 @@
+{
+ "format": "uroboros.contract/1",
+ "path": "durations.py",
+ "doc": "Disc title durations: a printed duration read as seconds, and a title classed by its length.",
+ "imports": [],
+ "objects": [],
+ "body": [
+  {
+   "function": "title_kind",
+   "doc": {
+    "prose": "The kind of a disc title by its printed duration: 'extra' under two minutes, 'episode' under eighty minutes, 'film' from eighty minutes on. A text that is not a duration is refused with ValueError, as seconds_of refuses it.",
+    "operations": [
+     {"category": "BOUNDARY", "what": "the two edges, 120 and 4800 seconds"},
+     {"category": "VALUE", "what": "the three kind words"}
+    ]
+   },
+   "intent_test": {
+    "source": "def test_title_kind():\n    assert title_kind('0:01:59') == 'extra'\n    assert title_kind('0:02:00') == 'episode'\n    assert title_kind('1:19:59') == 'episode'\n    assert title_kind('1:20:00') == 'film'\n    assert title_kind('2:31:07') == 'film'\n\n\ndef test_title_kind_depends_on_the_duration():\n    assert title_kind('0:00:30') != title_kind('2:00:00')\n    assert title_kind('0:30:00') != title_kind('0:00:30')\n\n\ndef test_title_kind_refuses_what_is_not_a_duration():\n    with pytest.raises(ValueError):\n        title_kind('soon')\n",
+    "covers": [
+     {"category": "BOUNDARY", "subject": "seconds against 120 and 4800", "operator": "Lt", "range": "119/120 and 4799/4800 seconds"},
+     {"category": "VALUE", "subject": "the kind words", "operator": "", "range": "extra, episode, film"},
+     {"category": "OUTPUT", "subject": "the kind", "operator": "const", "range": "30 seconds against 2 hours; 30 minutes against 30 seconds"},
+     {"category": "OUTPUT", "subject": "the kind", "operator": "raise", "range": "a text that is not a duration"}
+    ]
+   },
+   "objects": [],
+   "functions": [
+    {
+     "function": "seconds_of",
+     "doc": {
+      "prose": "A printed duration, 'H:MM:SS' or 'MM:SS', read as a whole number of seconds. Each field is a whole number of digits; minutes and seconds are each below 60. Anything else is refused with ValueError.",
+      "operations": [
+       {"category": "ARITHMETIC", "what": "hours times 3600, plus minutes times 60, plus seconds"},
+       {"category": "BOUNDARY", "what": "minutes and seconds below 60, and two or three fields"},
+       {"category": "EXCEPTION", "what": "ValueError for a text that is not a duration"}
+      ]
+     },
+     "intent_test": {
+      "source": "def test_seconds_of():\n    assert seconds_of('1:02:03') == 3723\n    assert seconds_of('0:00:00') == 0\n    assert seconds_of('45:10') == 2710\n    assert seconds_of('12:59:59') == 46799\n\n\ndef test_seconds_of_depends_on_every_field():\n    assert seconds_of('1:00:00') != seconds_of('0:00:01')\n    assert seconds_of('0:01:00') != seconds_of('0:00:01')\n\n\ndef test_seconds_of_refuses_what_is_not_a_duration():\n    for bad in ('', '1:2:3:4', '1:60:00', '1:00:60', 'a:00:00', '-1:00:00', '1:-5:00'):\n        with pytest.raises(ValueError):\n            seconds_of(bad)\n",
+      "covers": [
+       {"category": "ARITHMETIC", "subject": "hours * 3600 + minutes * 60 + seconds", "operator": "Mult", "range": "0:00:00 to 12:59:59"},
+       {"category": "BOUNDARY", "subject": "minutes and seconds against 60", "operator": "Lt", "range": "59/60"},
+       {"category": "EXCEPTION", "subject": "a text that is not a duration", "operator": "Raise", "range": "empty, four fields, a field of 60, a letter, a sign"},
+       {"category": "OUTPUT", "subject": "the seconds", "operator": "const", "range": "1:00:00 against 0:00:01; 0:01:00 against 0:00:01"},
+       {"category": "OUTPUT", "subject": "the seconds", "operator": "raise", "range": "the refused texts above"}
+      ]
+     },
+     "objects": [],
+     "functions": [],
+     "signature": null,
+     "code": null
+    }
+   ],
+   "signature": null,
+   "code": null
+  }
+ ],
+ "test_imports": [
+  "import pytest",
+  "from durations import seconds_of, title_kind"
+ ],
+ "detective": [
+  "regime",
+  "audit"
+ ]
+}

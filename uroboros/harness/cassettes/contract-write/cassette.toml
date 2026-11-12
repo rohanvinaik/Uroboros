@@ -1,0 +1,59 @@
+# contract-write — the contract writer's seat (docs/theory/SEPARATION_OF_AUTHORITY.md R2): one call reads the
+# founder's instructions for one module, with its imports and globals as they stand, and writes the module's contract:
+# the obligations (the docstrings at two levels, each function's intent tests of both signs with their coverage lines,
+# each object's value as intent, the globals) and the empty structure that holds the cells, functions bottom-up.
+#
+# CORRECTNESS-shaped: one slot, `contract`, held at decode time to the seat's form (contract.contract_schema, supplied
+# at run time): each function at its scope's top naming in `combines` the functions it combines, its coverage as two
+# lists (`covers`, `never`), every signature and body null: the contract writer never writes code (R1). The stored
+# contract is built from the reply (contract.seat_contract: the nesting from the names, the two lists merged; the
+# founder, 2026-10-07). What neither reads, contract.seat_verdict reads after: the contract's own verdict, the
+# module's path, and the imports and globals it must keep. A null contract is an abstention: the instructions do not
+# determine a module, and the definition goes back to the founder.
+#
+# One call per module, apart from every other authority's call (the founder, 2026-10-07: «Separate calls»). The seat
+# is held by whoever is granted it (R1): contract.write_contract plays this cassette under the holder's model record
+# (contract.MODELS). The [model] section below serves a standalone run only.
+#
+# A revision is the same call (the receiver's contract_wrong; the founder, 2026-10-07: «Contract and hand-back»,
+# «Instructions too»): it reads besides the module's contract as it stands and the hand-back record that found it
+# wrong, and contract.revision assembles the next version (contract.revise_contract).
+#
+# The warrant is CHECK: contract.seat_verdict re-verifies the form and the module's identity before anything is played;
+# whether the contract says what the founder means is measured on the contract writer's qualification corpus (R9) and
+# read by him.
+
+id = "contract-write"
+label = "Contract writer: the founder's instructions for one module, written as its contract"
+category = "correctness"
+warrant = "check: contract.seat_verdict re-verifies the contract's form, its module and what it keeps; what it means is measured per role (R9) and read by the founder"
+discharge = "check"
+hand_back = "definition"
+render = "none"
+
+[model]
+name = "qwen3-coder-next:latest"
+api = "ollama"
+format = "schema"
+keep_alive = "30m"
+timeout_s = 900
+
+[model.options]
+temperature = 0.1
+num_ctx = 32768
+num_predict = 8192
+
+[guards]
+# The call-level retries only (transport, unparseable): never a second writing attempt.
+pass_budget = 2
+
+[prompt]
+template = "prompt.md"
+answer = "none"
+
+[[slot]]
+name = "contract"
+kind = "contract"
+source = "runtime"
+allow_abstain = true
+description = "the module's contract"

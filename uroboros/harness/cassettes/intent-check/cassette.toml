@@ -1,0 +1,46 @@
+# intent-check — the admission seat's one judgment (docs/theory/SEPARATION_OF_AUTHORITY.md §2; the founder,
+# 2026-10-07, separation [8]): one call per function reads its intent tests and docstring beside the records Detective
+# pinned for it, and gives each record agrees, contradicts (naming the intent test or coverage line) or cannot tell.
+#
+# CORRECTNESS-shaped: one slot, `verdicts`, of kind form, held at decode time to the form its caller supplies
+# (admission.check_form): one property per record, each one of the verdicts that function's contract allows, every
+# record answered. A contradiction is a hand-back to the lead, then Sol; a cannot-tell goes to the founder
+# (admission.held_back). Admission reads Detective's pins only: it probes no survivor further than Detective's own
+# blocks ask (separation [11]).
+#
+# One call per function, apart from every other authority's call (the founder, 2026-10-07: «Separate calls»), played
+# under the admission holder's model record (contract.MODELS). The [model] section below serves a standalone run only.
+
+id = "intent-check"
+label = "Admission: each record Detective pinned, checked against the function's stated intent"
+category = "correctness"
+warrant = "judgment: the holder is granted admission after its qualification (R9); every contradiction goes to the lead or Sol, and every cannot-tell to the founder"
+discharge = "downstream"
+hand_back = "judgment"
+render = "none"
+
+[model]
+name = "qwen3-coder-next:latest"
+api = "ollama"
+format = "schema"
+keep_alive = "30m"
+timeout_s = 600
+
+[model.options]
+temperature = 0.1
+num_ctx = 32768
+num_predict = 2048
+
+[guards]
+# The call-level retries only (transport, unparseable): never a second judgment.
+pass_budget = 2
+
+[prompt]
+template = "prompt.md"
+
+[[slot]]
+name = "verdicts"
+kind = "form"
+source = "runtime"
+allow_abstain = false
+description = "one verdict for each record, by its number"

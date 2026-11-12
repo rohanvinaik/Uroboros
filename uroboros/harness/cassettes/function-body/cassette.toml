@@ -1,0 +1,64 @@
+# function-body — the one call in which a model writes: it types one contracted function's body, once.
+#
+# CORRECTNESS-shaped, like every model call in the harness: a typed hole under decode-time constraint (format = the
+# schema), never free text. The founder, 2026-10-05: the writing call falls «under the same global ruleset, of which
+# some sections are typed subsets for specific operation (e.g. the detective part is constrained only to what
+# detetive specifies, but that's a subset of constrained output format in general)».
+#
+# The typed subset for writing: the reply is one object whose only field, `body`, holds the function's statements,
+# held while it is typed to a pattern (decisions.code_pattern) built from two things:
+# - the unit's shape contract, `shape.json` beside its stub: every name, attribute, string and number the body may
+#   contain (the parameters are added from the stub's signature), and optionally a narrower `syntax`;
+# - the global syntax, this slot's `values` below: the keywords and operators any body may use (the founder,
+#   2026-10-05: «Tunable global set of sane operations, function-specific contract in operation as a narrower
+#   scoping»). Tune it here; a token the harness does not know (decisions.CODE_KEYWORDS, CODE_OPERATORS) is refused.
+# A null body is an abstention: the contract does not determine the function, and it goes back to the lead.
+#
+# Nothing plays this cassette since 2026-10-06: a model writes code through the contract harness
+# (uroboros/harness/contract.py), and `possess`, which played it, was removed with its re-check after typing.
+# It stays in the registry (docs/ARCHITECTURE.md).
+#
+# The warrant is DOWNSTREAM: a typed body is only a candidate; Detective measures what it does, and nothing reaches a
+# module before the lead's audit.
+
+id = "function-body"
+label = "Function body: type one contracted function's body into its stub, once; Detective decides what it is"
+category = "correctness"
+warrant = "downstream: a typed body is only a candidate inside its contract's scope (decisions.code_pattern); Detective measures what it does, and the lead's audit admits it"
+discharge = "downstream"
+hand_back = "definition"
+render = "none"
+
+[model]
+# The newest MoE coder on the command station (the founder, 2026-10-05: «the newest MoE one would be best»):
+# qwen3next, 79.7B, Q4_K_M; its capabilities are completion and tools, so `think` is not sent. Pinned to Ollama's
+# wire (the llama-server router failed to spawn models, 2026-10-05).
+name = "qwen3-coder-next:latest"
+api = "ollama"
+format = "schema"
+keep_alive = "30m"
+timeout_s = 900
+
+[model.options]
+temperature = 0.1
+num_ctx = 32768
+num_predict = 3072
+
+[guards]
+# The call-level retries only (transport, unparseable): never a second authoring attempt.
+pass_budget = 2
+
+[prompt]
+template = "prompt.md"
+
+[[slot]]
+name = "body"
+kind = "code"
+source = "inline"
+allow_abstain = true
+description = "the statements that carry out the contract"
+values = [
+  "if", "elif", "else", "for", "in", "not", "and", "or", "is", "return", "None", "True", "False", "break", "continue", "pass", "lambda",
+  "==", "!=", "<=", ">=", "<", ">", "=", "+=", "-=", "*=", "+", "-", "*", "/", "//", "%", "**", "|", "&",
+  "(", ")", "[", "]", "{", "}", ",", ":",
+]

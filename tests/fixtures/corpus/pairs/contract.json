@@ -1,0 +1,154 @@
+{
+ "format": "uroboros.contract/1",
+ "path": "pairs.py",
+ "doc": "Settings written as key = value lines.",
+ "imports": [],
+ "objects": [],
+ "body": [
+  {
+   "function": "read_settings",
+   "doc": {
+    "prose": "A text of key = value lines read as a mapping from key to value, each line read as read_pair reads it. Blank lines and lines whose first character other than a space is '#' are skipped. A key given twice is refused with ValueError, as is any line read_pair refuses.",
+    "operations": [
+     {
+      "category": "STATE",
+      "what": "the mapping, one key at a time"
+     },
+     {
+      "category": "BOUNDARY",
+      "what": "a key already read"
+     },
+     {
+      "category": "EXCEPTION",
+      "what": "ValueError for a key given twice"
+     }
+    ]
+   },
+   "intent_test": {
+    "source": "def test_read_settings():\n    text = 'name = disc one\\n\\n# a comment\\n  # an indented comment\\nkind=film\\n'\n    assert read_settings(text) == {'name': 'disc one', 'kind': 'film'}\n    assert read_settings('') == {}\n    assert read_settings('\\n\\n') == {}\n\n\ndef test_read_settings_depends_on_its_lines():\n    assert read_settings('a = 1') != read_settings('a = 2')\n\n\ndef test_read_settings_keeps_every_key():\n    assert len(read_settings('a = 1\\nb = 2\\nc = 3')) == 3\n\n\ndef test_read_settings_refuses_a_key_given_twice():\n    with pytest.raises(ValueError):\n        read_settings('a = 1\\na = 2')\n\n\ndef test_read_settings_refuses_a_line_that_is_not_a_pair():\n    with pytest.raises(ValueError):\n        read_settings('a = 1\\nnot a pair')\n",
+    "covers": [
+     {
+      "category": "STATE",
+      "subject": "the mapping, one key at a time",
+      "operator": "Assign",
+      "range": "0 to 3 keys"
+     },
+     {
+      "category": "BOUNDARY",
+      "subject": "a key already read",
+      "operator": "In",
+      "range": "a given twice"
+     },
+     {
+      "category": "EXCEPTION",
+      "subject": "a key given twice",
+      "operator": "Raise",
+      "range": "a = 1 then a = 2"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the mapping",
+      "operator": "dict",
+      "range": "two keys among blank and comment lines"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the mapping",
+      "operator": "drop",
+      "range": "three keys"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the mapping",
+      "operator": "const",
+      "range": "values 1 and 2"
+     },
+     {
+      "category": "OUTPUT",
+      "subject": "the mapping",
+      "operator": "raise",
+      "range": "a key twice; a line that is not a pair"
+     }
+    ]
+   },
+   "objects": [],
+   "functions": [
+    {
+     "function": "read_pair",
+     "doc": {
+      "prose": "One line read as a key and its value: split at the first '=', each side stripped of surrounding spaces. A line without '=', or with nothing before it, is refused with ValueError.",
+      "operations": [
+       {
+        "category": "SWAP",
+        "what": "the split at the first '='"
+       },
+       {
+        "category": "BOUNDARY",
+        "what": "a key that is empty"
+       },
+       {
+        "category": "EXCEPTION",
+        "what": "ValueError for a line that is not a pair"
+       }
+      ]
+     },
+     "intent_test": {
+      "source": "def test_read_pair():\n    assert read_pair('name = disc one') == ('name', 'disc one')\n    assert read_pair('a=b') == ('a', 'b')\n    assert read_pair('url = http://x?y=1') == ('url', 'http://x?y=1')\n    assert read_pair('empty =') == ('empty', '')\n\n\ndef test_read_pair_depends_on_the_line():\n    assert read_pair('a = 1') != read_pair('b = 1')\n    assert read_pair('a = 1') != read_pair('a = 2')\n\n\ndef test_read_pair_strips_only_the_ends():\n    assert read_pair('  key  =  two words  ') == ('key', 'two words')\n\n\ndef test_read_pair_refuses_what_is_not_a_pair():\n    for bad in ('no equals sign', '= value', '   = value', ''):\n        with pytest.raises(ValueError):\n            read_pair(bad)\n",
+      "covers": [
+       {
+        "category": "SWAP",
+        "subject": "the split at the first '='",
+        "operator": "Call",
+        "range": "one '=' and two"
+       },
+       {
+        "category": "BOUNDARY",
+        "subject": "a key that is empty",
+        "operator": "Not",
+        "range": "'= value', '   = value'"
+       },
+       {
+        "category": "EXCEPTION",
+        "subject": "a line that is not a pair",
+        "operator": "Raise",
+        "range": "no '=', nothing before it, an empty line"
+       },
+       {
+        "category": "OUTPUT",
+        "subject": "the pair",
+        "operator": "const",
+        "range": "keys a and b; values 1 and 2"
+       },
+       {
+        "category": "OUTPUT",
+        "subject": "the pair",
+        "operator": "ws",
+        "range": "spaces around the key and the value, and inside the value"
+       },
+       {
+        "category": "OUTPUT",
+        "subject": "the pair",
+        "operator": "raise",
+        "range": "the refused lines above"
+       }
+      ]
+     },
+     "objects": [],
+     "functions": [],
+     "signature": null,
+     "code": null
+    }
+   ],
+   "signature": null,
+   "code": null
+  }
+ ],
+ "test_imports": [
+  "import pytest",
+  "from pairs import read_pair, read_settings"
+ ],
+ "detective": [
+  "regime",
+  "audit"
+ ]
+}
