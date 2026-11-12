@@ -83,7 +83,7 @@ import symtable
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from . import daemon, decisions, detective
+from . import budget, daemon, decisions, detective
 from . import model as wire
 from .cassette import find_cassette
 from .run import invoke
@@ -333,11 +333,11 @@ _CONSTANT_SCHEMA = {
 }
 
 
-def _kind_schema(kind: str) -> dict:
+def _kind_schema(kind: str, exclude: tuple = ()) -> dict:
     if kind in SUMS or kind in PRODUCTS or kind == "constant":
         return {"$ref": f"#/$defs/{kind}"}
     if kind in ENUMS:
-        return {"enum": list(ENUMS[kind])}
+        return {"enum": [name for name in ENUMS[kind] if name not in exclude]}
     if kind == "identifier":
         return {"type": "string", "pattern": f"^{_IDENT}$"}
     if kind == "dotted":
@@ -347,8 +347,8 @@ def _kind_schema(kind: str) -> dict:
     return {"type": "string"}
 
 
-def _field_schema(kind: str, quantifier: str) -> dict:
-    one = _kind_schema(kind)
+def _field_schema(kind: str, quantifier: str, exclude: tuple = ()) -> dict:
+    one = _kind_schema(kind, exclude)
     if quantifier == "*":
         return {"type": "array", "items": one}
     if quantifier == "+":
@@ -360,9 +360,9 @@ def _field_schema(kind: str, quantifier: str) -> dict:
     return one
 
 
-def _node_schema(name: str, fields: tuple, tagged: bool) -> dict:
+def _node_schema(name: str, fields: tuple, tagged: bool, exclude: tuple = ()) -> dict:
     properties: dict = {"_type": {"const": name}} if tagged else {}
-    properties.update({f: _field_schema(k, q) for f, k, q in fields})
+    properties.update({f: _field_schema(k, q, exclude) for f, k, q in fields})
     required = (["_type"] if tagged else []) + [f for f, _k, q in fields if q in ("", "+")]
     return {"type": "object", "properties": properties, "required": required, "additionalProperties": False}
 
@@ -374,9 +374,9 @@ def grammar_defs(exclude: tuple = ()) -> dict:
     for sum_name, ctors in SUMS.items():
         defs[sum_name] = {"anyOf": [{"$ref": f"#/$defs/{n}"} for n in ctors if n not in exclude]}
         for name, fields in ctors.items():
-            defs[name] = _node_schema(name, fields, tagged=True)
+            defs[name] = _node_schema(name, fields, tagged=True, exclude=exclude)
     for name, fields in PRODUCTS.items():
-        defs[name] = _node_schema(name, fields, tagged=False)
+        defs[name] = _node_schema(name, fields, tagged=False, exclude=exclude)
     return defs
 
 
@@ -430,7 +430,7 @@ def _build(value: object, kind: str, quantifier: str, path: str, exclude: tuple)
         if not isinstance(value, dict):
             raise _Bad(path)
         name = value.get("_type")
-        if not isinstance(name, str) or name not in SUMS[kind] or (kind == "stmt" and name in exclude):
+        if not isinstance(name, str) or name not in SUMS[kind] or name in exclude:
             raise _Bad(path)
         return _make(name, SUMS[kind][name], value, path, exclude)
     if kind in PRODUCTS:
@@ -438,7 +438,7 @@ def _build(value: object, kind: str, quantifier: str, path: str, exclude: tuple)
             raise _Bad(path)
         return _make(kind, PRODUCTS[kind], value, path, exclude)
     if kind in ENUMS:
-        if value not in ENUMS[kind]:
+        if value not in ENUMS[kind] or value in exclude:
             raise _Bad(path)
         return getattr(ast, str(value))()
     if kind in ("identifier", "dotted"):
@@ -693,6 +693,57 @@ def _class_verdict(node: dict, qualname: str) -> str:
     return "ok"
 
 
+_AST_HOLE_KINDS = {
+    "expr": ("expr", "", {"_type": "Constant", "value": None}),
+    "stmt": ("stmt", "", {"_type": "Pass"}),
+    "body": ("stmt", "+", [{"_type": "Pass"}]),
+}
+
+
+def _template_rules(template: object) -> tuple:
+    """Read slot kinds and authored constructor limits, shared by decode and admission."""
+    if not isinstance(template, dict):
+        return "invalid_template", {}, ()
+    holes, syntax = template.get("holes", {}), template.get("syntax", {})
+    if not isinstance(holes, dict) or not isinstance(syntax, dict) or (syntax and not holes):
+        return "invalid_template", {}, ()
+    for name, kind in holes.items():
+        if not isinstance(name, str) or not re.fullmatch(_IDENT, name) or not isinstance(kind, str) or kind not in _AST_HOLE_KINDS:
+            return "invalid_template", {}, ()
+    excluded = list(BODY_EXCLUDES)
+    for kind, names in syntax.items():
+        available = SUMS.get(kind) or ENUMS.get(kind)
+        if (
+            not available or not isinstance(names, list) or not names
+            or any(not isinstance(name, str) or name not in available or name in BODY_EXCLUDES for name in names)
+            or len(names) != len(set(names))
+        ):
+            return "invalid_template", {}, ()
+        excluded.extend(name for name in available if name not in names)
+    return "ok", holes, tuple(excluded)
+
+
+def _expand_template(template: dict, reply: dict | None) -> tuple:
+    status, holes, excluded = _template_rules(template)
+    if status != "ok":
+        return status, {}
+    if reply is None:
+        stubs = {name: _AST_HOLE_KINDS[kind][2] for name, kind in holes.items()}
+        return decisions.expand_ast_template(template, None, stubs)
+    required = ({"choices"} if template.get("choices") else set()) | ({"holes"} if holes else set())
+    if set(reply) != required:
+        return "invalid_template_reply", {}
+    selections, subtrees = reply.get("choices", {}), reply.get("holes", {})
+    if not isinstance(selections, dict) or not isinstance(subtrees, dict) or set(subtrees) != set(holes):
+        return "invalid_template_reply", {}
+    for name, kind in holes.items():
+        category, quantifier, _stub = _AST_HOLE_KINDS[kind]
+        status, _ast = ast_from_json(subtrees[name], category, quantifier, excluded)
+        if status != "ok":
+            return f"hole:{name}:{status}", {}
+    return decisions.expand_ast_template(template, selections, subtrees)
+
+
 def _function_verdict(node: dict, qualname: str) -> str:
     doc = node.get("doc")
     operations = doc.get("operations") if isinstance(doc, dict) else None
@@ -726,7 +777,7 @@ def _function_verdict(node: dict, qualname: str) -> str:
     if node.get("code") is not None and ast_from_json(node["code"], "stmt", "*", BODY_EXCLUDES)[0] != "ok":
         return f"bad_cell:{qualname}"
     if "ast_template" in node:
-        status, cells = decisions.expand_ast_template(node["ast_template"], None)
+        status, cells = _expand_template(node["ast_template"], None)
         if status != "expanded" or _signature_verdict(cells["signature"]) != "ok":
             return f"bad_template:{qualname}"
         status, stmts = ast_from_json(cells["code"], "stmt", "*", BODY_EXCLUDES)
@@ -857,7 +908,13 @@ def contract_schema() -> dict:
             "code": {"type": "null"},
             "ast_template": {
                 "type": "object",
-                "properties": {"signature": {"type": "object"}, "code": {"type": "array", "items": {"type": "object"}}, "choices": {"type": "object"}},
+                "properties": {
+                    "signature": {"type": "object"},
+                    "code": {"anyOf": [{"type": "array", "items": {"type": "object"}}, {"type": "object"}]},
+                    "choices": {"type": "object"},
+                    "holes": {"type": "object", "additionalProperties": {"enum": list(_AST_HOLE_KINDS)}},
+                    "syntax": {"type": "object", "additionalProperties": {"type": "array", "items": text}},
+                },
                 "required": ["signature", "code", "choices"],
                 "additionalProperties": False,
             },
@@ -1289,6 +1346,10 @@ def call_context(contract: dict, qualname: str) -> dict | str:
     }
 
 
+def _required_object(properties: dict) -> dict:
+    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+
 def call_schema(contract: dict, qualname: str) -> dict | str:
     """The JSON schema one call's answer is held to while the model generates (pure): the function's empty cells
     (its signature, its code), imports for the file, new global objects for the file, and the definitions of the
@@ -1301,16 +1362,27 @@ def call_schema(contract: dict, qualname: str) -> dict | str:
     if kind != "function":
         return "unknown_target"
     if "ast_template" in node:
-        options = node["ast_template"]["choices"]
-        selection = {"type": "object", "properties": {name: {"enum": list(values)} for name, values in options.items()}, "required": list(options), "additionalProperties": False}
-        return {"type": "object", "properties": {"choices": selection}, "required": ["choices"], "additionalProperties": False}
+        template = node["ast_template"]
+        _status, holes, excluded = _template_rules(template)
+        properties = {}
+        choices = template["choices"]
+        if choices:
+            properties["choices"] = _required_object({name: {"enum": list(values)} for name, values in choices.items()})
+        if holes:
+            properties["holes"] = _required_object({
+                name: _field_schema(*_AST_HOLE_KINDS[kind][:2]) for name, kind in holes.items()
+            })
+        reply = _required_object(properties)
+        if holes:
+            reply["$defs"] = grammar_defs(excluded)
+        return reply
     expr_or_null = {"anyOf": [{"$ref": "#/$defs/expr"}, {"type": "null"}]}
     properties: dict = {}
     if node.get("signature") is None:
         properties["signature"] = {
             "type": "object",
             "properties": {"args": {"$ref": "#/$defs/arguments"}, "returns": expr_or_null, "decorator_list": {"type": "array", "items": {"$ref": "#/$defs/expr"}}},
-            "required": ["args", "returns", "decorator_list"],
+            "required": ["args"],
             "additionalProperties": False,
         }
     if node.get("code") is None:
@@ -1328,7 +1400,7 @@ def call_schema(contract: dict, qualname: str) -> dict | str:
     open_objects = _open_objects(contract, qualname)
     if open_objects:
         properties["objects"] = {"type": "object", "properties": {q: expr_or_null for q in open_objects}, "required": open_objects, "additionalProperties": False}
-    return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False, "$defs": grammar_defs(BODY_EXCLUDES)}
+    return {"type": "object", "properties": properties, "required": [name for name in properties if name not in ("imports", "new_objects")], "additionalProperties": False, "$defs": grammar_defs(BODY_EXCLUDES)}
 
 
 def fill(contract: dict, qualname: str, reply: object) -> tuple:
@@ -1348,9 +1420,9 @@ def fill(contract: dict, qualname: str, reply: object) -> tuple:
     if "ast_template" in node:
         if node.get("code") is not None:
             return "bad_reply:final:code", contract
-        if set(reply) != {"choices"} or not isinstance(reply["choices"], dict):
+        status, reply = _expand_template(node["ast_template"], reply)
+        if status == "invalid_template_reply" and not node["ast_template"].get("holes"):
             return "bad_reply:choices", contract
-        status, reply = decisions.expand_ast_template(node["ast_template"], reply["choices"])
         if status != "expanded":
             return f"bad_reply:{status}", contract
     open_objects = _open_objects(contract, qualname)
@@ -1560,7 +1632,17 @@ MODELS: dict = {
         "options": {"temperature": 0, "num_ctx": 16384, "num_predict": 2048},
         "context_limit": 262144,
         "max_weight": None,
-        "why": "local small-model profile for declared AST choices",
+        "write_calibration": {
+            # Measured on the checked and admitted usage-billing expression example.
+            "holes:expr": {
+                "margin": 2.0,
+                "rows": [
+                    {"score": 148, "prompt_chars": 2729, "thinking": False, "output_tokens": 248, "prompt_tokens": 995, "correct": True},
+                    {"score": 188, "prompt_chars": 2795, "thinking": False, "output_tokens": 196, "prompt_tokens": 1033, "correct": True},
+                ],
+            },
+        },
+        "why": "local small-model profile for constrained AST fills",
     },
     "qwen3-coder-next": {
         "name": "qwen3-coder-next:latest",
@@ -1661,6 +1743,43 @@ _DEFAULT_TIMEOUT_S = 900
 # ── The player: a contract through the model, one function at a time ────────────────────────────────────────────────
 
 
+def _write_budget(context: dict, prompt: str, record: dict) -> tuple:
+    """Pick the reply reservation and record its measured or profile basis."""
+    template = context["function"].get("ast_template")
+    holes = (template or {}).get("holes", {})
+    form = "holes:" + "+".join(sorted(set(holes.values()))) if holes else "choices" if template else "ast"
+    scored = budget.contract_score(context)
+    if isinstance(scored, str):
+        return f"budget_score:{scored}", {}
+    options = dict(record.get("options") or {})
+    report = {**scored, "form": form, "prompt_chars": len(prompt), "thinking": record.get("think") is True}
+    calibrations = record.get("write_calibration", {})
+    if not isinstance(calibrations, dict):
+        return "budget_calibration:invalid", {}
+    if form not in calibrations:
+        return options, {**report, "source": "profile", "reason": "uncalibrated", "num_predict": options.get("num_predict")}
+    calibration = calibrations[form]
+    if not isinstance(calibration, dict):
+        return "budget_calibration:invalid", {}
+    stats = budget.calibrate(calibration.get("rows"), calibration.get("margin"))
+    if isinstance(stats, str):
+        return f"budget_calibration:{stats}", {}
+    ratio = stats["thinking" if report["thinking"] else "plain"]
+    cap = budget.write_cap(scored["score"], len(prompt), {
+        "tokens_per_point": ratio,
+        "chars_per_token": stats["chars_per_token"],
+        "window": record.get("context_limit") or options.get("num_ctx"),
+        "overhead_tokens": 1024,
+    })
+    if isinstance(cap, str):
+        if cap.startswith("uncalibrated:"):
+            return options, {**report, "source": "profile", "reason": cap, "num_predict": options.get("num_predict")}
+        if cap.startswith("over_capacity:"):
+            return "context_over_capacity", {}
+        return f"budget_cap:{cap}", {}
+    return {**options, "num_predict": cap["num_predict"]}, {**report, **cap, "source": "measured", "rows": stats["rows"]}
+
+
 def call_payload(contract: dict, qualname: str, record: dict, api: str, repair: dict | None = None) -> dict | str:
     """The exact request one call sends and its weight, with a context budget for adaptive profiles (pure). The payload is
     built by the harness's wire (``model.request_payload``) with the call's schema as the format. Codes: a contract
@@ -1679,22 +1798,34 @@ def call_payload(contract: dict, qualname: str, record: dict, api: str, repair: 
     if repair:
         context["repair"] = repair
         options = schema.get("properties", {}).get("choices", {}).get("properties", {})
-        if len(options) == 1:
+        if len(options) == 1 and "holes" not in schema.get("properties", {}):
             name, slot = next(iter(options.items()))
             rejected = {selection.get(name) for selection in repair["rejected"]}
             slot["enum"] = [label for label in slot["enum"] if label not in rejected]
             if not slot["enum"]:
                 return "no_remaining_choices"
+    template = node.get("ast_template", {})
+    if template.get("holes"):
+        context["reply"] = {"holes": template["holes"], **({"choices": {name: list(values) for name, values in template["choices"].items()}} if template["choices"] else {})}
+        if template.get("syntax"):
+            context["constructors"] = {
+                name: {field: kind + quantifier for field, kind, quantifier in SUMS[category][name]}
+                for category, names in template["syntax"].items() if category in SUMS for name in names
+            }
     weight = call_weight(context)
     cap = record.get("max_weight")
     if isinstance(cap, int) and not isinstance(cap, bool) and weight > cap:
         return "over_capacity"
-    messages = [{"role": "user", "content": json.dumps(context, ensure_ascii=False, indent=1)}]
-    options, budget = wire.context_budget(api, messages, dict(record.get("options") or {}), record.get("context_limit"))
-    if budget and isinstance(budget["num_ctx"], str):
-        return budget["num_ctx"]
+    prompt = json.dumps(context, ensure_ascii=False, indent=1)
+    options, write_budget = _write_budget(context, prompt, record)
+    if isinstance(options, str):
+        return options
+    messages = [{"role": "user", "content": prompt}]
+    options, window = wire.context_budget(api, messages, options, record.get("context_limit"))
+    if window and isinstance(window["num_ctx"], str):
+        return window["num_ctx"]
     payload, ignored = wire.request_payload(api, record["name"], messages, schema, options, record.get("think"), record.get("keep_alive") or "")
-    return {"weight": weight, "payload": payload, "ignored": ignored, **({"context": budget} if budget else {})}
+    return {"weight": weight, "payload": payload, "ignored": ignored, "write_budget": write_budget, **({"context": window} if window else {})}
 
 
 def _log(out_dir: Path, entry: dict) -> None:
@@ -2146,7 +2277,7 @@ def play(
         if isinstance(request, str):
             skip(qualname, request)
             continue
-        entry = {"qualname": qualname, "weight": request["weight"], "ignored": request["ignored"]}
+        entry = {"qualname": qualname, "weight": request["weight"], "ignored": request["ignored"], "write_budget": request["write_budget"]}
         if "context" in request:
             entry["context"] = request["context"]
         try:
@@ -2165,7 +2296,7 @@ def play(
             _log(out_dir, failure)
             skip(qualname, code, failure)
             continue
-        if repair and isinstance(reply, dict) and reply.get("choices") in repair["rejected"]:
+        if repair and isinstance(reply, dict) and "holes" not in reply and reply.get("choices") in repair["rejected"]:
             code = "bad_reply:repeated_choices"
         else:
             code, contract = fill(contract, qualname, reply)
@@ -2364,7 +2495,7 @@ def main(argv: list | None = None) -> int:
     if args.command == "schema":
         print(json.dumps(contract_schema(), ensure_ascii=False, indent=2))
         return 0
-    args.model = args.model or (LINE_MODEL if args.command == "line" else DEFAULT_MODEL)
+    args.model = args.model or (LINE_MODEL if args.command in ("line", "request") else DEFAULT_MODEL)
     if args.command == "line":
         from .line import execute_line
 

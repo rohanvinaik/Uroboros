@@ -2261,6 +2261,44 @@ def test_detective_knows_each_function_by_its_name_in_the_written_file():
     assert contract.detective_targets(module) == [["top.low", "m.py::low"], ["top", "m.py::top"], ["C.m.h", "m.py::C.h"], ["C.m", "m.py::C.m"]]
 
 
+def test_open_ast_subtree_uses_the_same_constructor_constraints_at_decode_and_fill():
+    opened, original = _open_contract()
+    opened["body"][0]["ast_template"] = {
+        "signature": original["signature"],
+        "code": [{"_type": "Return", "value": {"$slot": "result"}}],
+        "choices": {},
+        "holes": {"result": "expr"},
+        "syntax": {"expr": ["Name", "Constant", "BinOp"], "operator": ["Add"], "expr_context": ["Load"]},
+    }
+    shape = contract.call_schema(opened, "polarity")
+    assert shape["required"] == ["holes"]
+    assert shape["$defs"]["expr"]["anyOf"] == [{"$ref": f"#/$defs/{name}"} for name in ("BinOp", "Constant", "Name")]
+    assert shape["$defs"]["BinOp"]["properties"]["op"] == {"enum": ["Add"]}
+    assert shape["$defs"]["Name"]["properties"]["ctx"] == {"enum": ["Load"]}
+    candidate = {"_type": "BinOp", "left": {"_type": "Constant", "value": 3}, "op": "Sub", "right": {"_type": "Constant", "value": 2}}
+    assert contract.fill(opened, "polarity", {"holes": {"result": candidate}}) == ("bad_reply:hole:result:bad:$.op", opened)
+    candidate["op"] = "Add"
+    status, filled = contract.fill(opened, "polarity", {"holes": {"result": candidate}})
+    assert status == "filled"
+    assert "return 3 + 2" in contract.render_module(filled)[1]
+    assert opened["body"][0]["code"] is None
+
+
+def test_measured_output_budget_follows_ast_in_the_intent_tests():
+    source, _reply = _open_contract()
+    row = {"score": 100, "output_tokens": 120, "prompt_chars": 900, "prompt_tokens": 300, "thinking": False, "correct": True}
+    profile = {**contract.MODELS[contract.LINE_MODEL], "write_calibration": {"ast": {"rows": [row], "margin": 2}}}
+    first = contract.call_payload(source, "polarity", profile, "ollama")
+    source["body"][0]["intent_test"]["source"] += "\n\ndef test_extra():\n    assert polarity(4) == polarity(5)\n"
+    larger = contract.call_payload(source, "polarity", profile, "ollama")
+    assert first["write_budget"]["source"] == "measured"
+    assert first["weight"] == larger["weight"]
+    assert larger["write_budget"]["parts"]["tests"] > first["write_budget"]["parts"]["tests"]
+    assert larger["payload"]["options"]["num_predict"] > first["payload"]["options"]["num_predict"]
+    assert larger["context"]["reply_tokens"] == larger["write_budget"]["num_predict"]
+    assert profile["options"]["num_predict"] == 2048
+
+
 def test_adaptive_context_grows_for_prompt_text_and_repair_evidence(tmp_path):
     source, _reply = _open_contract()
     profile = contract.MODELS[contract.LINE_MODEL]

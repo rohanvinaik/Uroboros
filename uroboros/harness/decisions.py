@@ -1291,19 +1291,15 @@ def judgment_dispatch(reply, kind, items, params):
     return {"inputs": inputs, "flags": flags, "abstained": abstained}
 
 
-def expand_ast_template(template, selection):
-    """Resolve the named slots in a signature and body over JSON data.
-
-    The template holds `signature`, `code` and `choices`. A node of the form
-    `{"$slot": name}` takes the value under the chosen label in `choices[name]`.
-    A null selection previews the first option at each slot for the contract check.
-    Return ("expanded", cells), ("invalid_template", {}) or ("invalid_selection", {}).
-    The caller checks the expanded cells against Python's AST and the contract.
-    """
-    if not isinstance(template, dict) or set(template) != {"signature", "code", "choices"}:
+def expand_ast_template(template, selection, subtrees=None):
+    """Substitute declared labels and typed subtree values into a signature and body."""
+    required = {"signature", "code", "choices"}
+    if not isinstance(template, dict) or not required <= template.keys() <= required | {"holes", "syntax"}:
         return "invalid_template", {}
-    choices = template["choices"]
-    if not isinstance(choices, dict) or not choices:
+    choices, holes = template["choices"], template.get("holes", {})
+    if not isinstance(choices, dict) or not isinstance(holes, dict) or not (choices or holes):
+        return "invalid_template", {}
+    if choices.keys() & holes.keys():
         return "invalid_template", {}
     for name, options in choices.items():
         if not isinstance(name, str) or not _IDENTIFIER.fullmatch(name) or not isinstance(options, dict) or not options:
@@ -1316,7 +1312,12 @@ def expand_ast_template(template, selection):
         return "invalid_selection", {}
     if any(not isinstance(label, str) or label not in choices[name] for name, label in selection.items()):
         return "invalid_selection", {}
+    if subtrees is None:
+        subtrees = {}
+    if not isinstance(subtrees, dict) or set(subtrees) != set(holes):
+        return "invalid_subtrees", {}
 
+    values = {name: choices[name][label] for name, label in selection.items()} | subtrees
     used = set()
 
     def expand(value):
@@ -1327,16 +1328,16 @@ def expand_ast_template(template, selection):
         if "$slot" not in value:
             return {key: expand(item) for key, item in value.items()}
         name = value["$slot"]
-        if len(value) != 1 or not isinstance(name, str) or name not in choices:
+        if len(value) != 1 or not isinstance(name, str) or name not in values:
             raise ValueError("invalid slot")
         used.add(name)
-        return choices[name][selection[name]]
+        return values[name]
 
     try:
         cells = {key: expand(template[key]) for key in ("signature", "code")}
     except (ValueError, RecursionError):
         return "invalid_template", {}
-    if used != set(choices):
+    if used != set(values):
         return "invalid_template", {}
     return "expanded", cells
 

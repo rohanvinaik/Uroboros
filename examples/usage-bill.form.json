@@ -1,0 +1,184 @@
+{
+  "format": "uroboros.contract/1",
+  "path": "usage_bill.py",
+  "doc": "Compute excess usage and bills in integer cents.",
+  "imports": [],
+  "objects": [],
+  "test_imports": [
+    "from usage_bill import excess_units, total_cents"
+  ],
+  "body": [
+    {
+      "function": "excess_units",
+      "doc": {
+        "prose": "Return the number of used units above the included allowance. At or below the allowance the result is zero. Both inputs are nonnegative integers.",
+        "operations": [
+          {
+            "category": "ARITHMETIC",
+            "what": "billing in integer units"
+          }
+        ]
+      },
+      "intent_test": {
+        "source": "def test_excess_units():\n    assert excess_units(4, 9) == 0\n    assert excess_units(9, 9) == 0\n    assert excess_units(10, 9) == 1\n    assert excess_units(19, 9) == 10\n    assert excess_units(8, 0) == 8\n",
+        "covers": [
+          {
+            "category": "ARITHMETIC",
+            "subject": "usage charge",
+            "range": "below, at, and above the allowance"
+          }
+        ],
+        "never": [
+          {
+            "category": "OUTPUT",
+            "subject": "usage charge",
+            "operator": "const",
+            "range": "varied usage and rates"
+          }
+        ]
+      },
+      "objects": [],
+      "combines": [],
+      "signature": null,
+      "code": null,
+      "ast_template": {
+        "signature": {
+          "args": {
+            "args": [
+              {
+                "arg": "used"
+              },
+              {
+                "arg": "included"
+              }
+            ]
+          }
+        },
+        "code": [
+          {
+            "_type": "Return",
+            "value": {
+              "$slot": "result"
+            }
+          }
+        ],
+        "choices": {},
+        "holes": {
+          "result": "expr"
+        },
+        "syntax": {
+          "expr": [
+            "Name",
+            "Constant",
+            "BinOp",
+            "Compare",
+            "IfExp",
+            "Call"
+          ],
+          "operator": [
+            "Sub"
+          ],
+          "cmpop": [
+            "Gt",
+            "GtE",
+            "Lt",
+            "LtE"
+          ],
+          "expr_context": [
+            "Load"
+          ]
+        }
+      }
+    },
+    {
+      "function": "total_cents",
+      "doc": {
+        "prose": "The invoice is the base fee plus the metered charge. The open charge is the price at rate_cents for each excess unit. The lower function computes excess_units(used, included). The base fee is independent of the metered charge.",
+        "operations": [
+          {
+            "category": "ARITHMETIC",
+            "what": "billing in integer units"
+          }
+        ]
+      },
+      "intent_test": {
+        "source": "def test_total_cents():\n    assert total_cents(50, 9, 0, 11) == 11\n    assert total_cents(5, 0, 5, 0) == 25\n    assert total_cents(7, 9, 3, 125) == 125\n    assert total_cents(9, 9, 3, 0) == 0\n    assert total_cents(10, 9, 3, 19) == 22\n    assert total_cents(15, 9, 12, 125) == 197\n    assert total_cents(15, 9, 12, 500) == 572\n",
+        "covers": [
+          {
+            "category": "ARITHMETIC",
+            "subject": "usage charge",
+            "range": "below, at, and above the allowance"
+          }
+        ],
+        "never": [
+          {
+            "category": "OUTPUT",
+            "subject": "usage charge",
+            "operator": "const",
+            "range": "varied usage and rates"
+          }
+        ]
+      },
+      "objects": [],
+      "combines": [
+        "excess_units"
+      ],
+      "signature": null,
+      "code": null,
+      "ast_template": {
+        "signature": {
+          "args": {
+            "args": [
+              {
+                "arg": "used"
+              },
+              {
+                "arg": "included"
+              },
+              {
+                "arg": "rate_cents"
+              },
+              {
+                "arg": "base_cents"
+              }
+            ]
+          }
+        },
+        "code": [
+          {
+            "_type": "Return",
+            "value": {
+              "_type": "BinOp",
+              "left": {
+                "_type": "Name",
+                "id": "base_cents",
+                "ctx": "Load"
+              },
+              "op": "Add",
+              "right": {
+                "$slot": "metered_charge"
+              }
+            }
+          }
+        ],
+        "choices": {},
+        "holes": {
+          "metered_charge": "expr"
+        },
+        "syntax": {
+          "expr": [
+            "Name",
+            "BinOp",
+            "Call"
+          ],
+          "operator": [
+            "Mult"
+          ],
+          "expr_context": [
+            "Load"
+          ]
+        }
+      }
+    }
+  ]
+}

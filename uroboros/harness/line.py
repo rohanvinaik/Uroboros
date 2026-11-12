@@ -233,6 +233,22 @@ def execute_line(source, out, model_key, mode, ceiling, *, contract_writer=None,
             stable["call"] = {key: call[key] for key in ("reply", "fill", "transport") if key in call}
             basis = json.dumps(stable, ensure_ascii=False, sort_keys=True).replace(str(folder.resolve()), "<round>").replace(str(folder), "<round>")
             records.append({"function": name, "ending": handback["ending"], "evidence": hashlib.sha256(basis.encode()).hexdigest()})
+        # Detective runs the full suite. Prioritize the owner of a shared failing intent test.
+        # This orders repairs and preserves every Detective hand-back and its target.
+        test_file = f"tests/test_{Path(unit.get('path', '')).stem}.py"
+        reported = {
+            name: set(entry["observations"].get("failing_tests", ()))
+            for name, entry in backs.items()
+        }
+        owned = {
+            name: reported[name] & {
+                f"{test_file}::{test}"
+                for test in admission.intent_names((entry["contract_entry"] or {}).get("intent_test", {}).get("source"))
+            }
+            for name, entry in backs.items()
+        }
+        recognized = set().union(*owned.values())
+        records.sort(key=lambda row: bool(reported[row["function"]] & recognized) and not owned[row["function"]])
         return {"played": str(folder), "contract": str(snapshot if snapshot.exists() else path), "done": result["done"] and not records, "handbacks": records}
 
     def receive(handback):
@@ -287,9 +303,11 @@ def execute_line(source, out, model_key, mode, ceiling, *, contract_writer=None,
         repair["evidence"] = evidence[name]["handback"]
         node = evidence[name]["contract_entry"]
         repair["prior_cells"] = {key: node.get(key) for key in ("signature", "code")}
-        prior = fills.pop(name, {}).get("choices")
-        options = node.get("ast_template", {}).get("choices", {})
-        if prior is None and len(options) == 1:
+        template = node.get("ast_template", {})
+        prior_fill = fills.pop(name, {})
+        prior = prior_fill.get("choices") if not template.get("holes") else None
+        options = template.get("choices", {})
+        if prior is None and len(options) == 1 and not template.get("holes"):
             slot, labels = next(iter(options.items()))
             for label in labels:
                 candidate = {slot: label}
