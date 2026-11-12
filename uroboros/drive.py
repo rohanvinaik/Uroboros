@@ -1,4 +1,4 @@
-"""Detective I/O — the thin layer the cycle drives Detective through.
+"""Detective I/O for the original uroboros-crawl workflow.
 
 Two functions, no model, no control flow: `det` runs one Detective subcommand with
 `--json` and returns (parsed state, error), and `enumerate_targets` lists the functions

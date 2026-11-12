@@ -1,11 +1,10 @@
 """uroboros.harness.line — the coding line's driver: one unit played until every function is done or escalated.
 
-The founder, step 6 of ``docs/theory/THE_CODING_LINE.md``: when the contract is bad, «a local model re-run loop? Or it just
-gives up and flags it as requiring active intelligence to fix? … both should be built and functional options». ``run_line``
-is that loop, in both modes. Every dependency is passed in as a callable (the play, the receiver, the next step, the two
-repairs and the replay), so the loop decides only what it is given, and it trusts no callable's result unchecked. A function
-once escalated is never played or judged again: an abstention is never retried into an answer (THE_DYAD, Law 5). The
-receiver's four decisions are ``decisions.DECISIONS``, and ``decisions.receiver_next`` is the usual ``next_step``.
+Uroboros repeats the local AST fill and Detective verification where a typed hand-back warrants another pass.
+``run_line`` consumes the checked results of its play, receiver and repair operations. Code faults can reissue
+the affected function under the same contract. Contract faults return to the contract author. Machine faults
+have a replay route. Abstention, repeated evidence and the configured bound preserve the remaining question.
+The terminal record is the input to optional Git admission. See ``docs/ARCHITECTURE.md``.
 """
 
 from __future__ import annotations
@@ -251,6 +250,17 @@ def execute_line(source, out, model_key, mode, ceiling, *, contract_writer=None,
         records.sort(key=lambda row: bool(reported[row["function"]] & recognized) and not owned[row["function"]])
         return {"played": str(folder), "contract": str(snapshot if snapshot.exists() else path), "done": result["done"] and not records, "handbacks": records}
 
+    def candidate_source(node, name):
+        if not node or node.get("code") is None:
+            return None
+        status, definition = contract._function_def(node, name)
+        if status != "ok":
+            return None
+        # The contract's prose is already in both requests. Show the code under it.
+        if len(definition.body) > 1:
+            definition.body = definition.body[1:]
+        return ast.unparse(ast.fix_missing_locations(definition))
+
     def receive(handback):
         if handback["ending"] == "transport":
             return "machine_wrong"
@@ -260,18 +270,13 @@ def execute_line(source, out, model_key, mode, ceiling, *, contract_writer=None,
         node = entry["contract_entry"] or {}
         authored = node.get("doc") or {}
         tests = node.get("intent_test") or {}
-        code = None
-        if node and node.get("code") is not None:
-            status, definition = contract._function_def(node, handback["function"])
-            if status == "ok":
-                code = ast.unparse(ast.fix_missing_locations(definition))
         shown = {
             "question": "Classify the cause of this hand-back using the stated intent, failing tests, and current code.",
             "ending": handback["ending"],
             "observations": entry["observations"],
             "intent": authored.get("prose"),
             "intent_tests": tests.get("source"),
-            "current_code": code,
+            "current_code": candidate_source(node, handback["function"]),
             "detective_decision": entry["handback"]["decision"],
             "doctor": entry["handback"]["doctor"],
             "decision_meanings": {
@@ -299,10 +304,21 @@ def execute_line(source, out, model_key, mode, ceiling, *, contract_writer=None,
         code, updated, _detail = contract.reissue(current, name)
         if code not in ("reissued", "unwritten"):
             return f"refused:{code}"
-        repair = repairs.setdefault(name, {"rejected": []})
-        repair["evidence"] = evidence[name]["handback"]
-        node = evidence[name]["contract_entry"]
-        repair["prior_cells"] = {key: node.get(key) for key in ("signature", "code")}
+        entry = evidence[name]
+        handback = entry["handback"]
+        node = entry["contract_entry"]
+        repair = {
+            "judgment": "code_wrong",
+            "ending": handback["ending"],
+            "decision": handback["decision"],
+            "observations": entry["observations"],
+            "prior_code": candidate_source(node, name),
+            "instruction": "Correct the rejected implementation in the open AST cells. Use the authored intent tests "
+                           "to check your replacement. Return a different implementation that satisfies the contract.",
+            **({"fill_failure": handback["evidence"]} if "evidence" in handback else {}),
+            "rejected": repairs.get(name, {}).get("rejected", []),
+        }
+        repairs[name] = repair
         template = node.get("ast_template", {})
         prior_fill = fills.pop(name, {})
         prior = prior_fill.get("choices") if not template.get("holes") else None
@@ -312,7 +328,7 @@ def execute_line(source, out, model_key, mode, ceiling, *, contract_writer=None,
             for label in labels:
                 candidate = {slot: label}
                 status, cells = decisions.expand_ast_template(node["ast_template"], candidate)
-                if status == "expanded" and all(cells[key] == value for key, value in repair["prior_cells"].items()):
+                if status == "expanded" and all(value == node.get(key) for key, value in cells.items()):
                     prior = candidate
                     break
         if isinstance(prior, dict) and prior not in repair["rejected"]:

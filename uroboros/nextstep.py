@@ -1,4 +1,4 @@
-"""The typed next-step — Detective's `DO THIS` brain, re-voiced as JSON for the model.
+"""The original crawler's adapter for Detective results predating the typed decision record.
 
 Detective renders one guided next action per state from `cli._derive_inputs` and its
 boundary-derivation tree. That derivation is the truth; the CLI prose is one *mouth* on it.

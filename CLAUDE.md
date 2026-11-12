@@ -2,4 +2,4 @@
 
 @AGENTS.md
 
-For a new coding request, use [the coding runbook](docs/CODING.md). Preserve the person's brief, author the contract in this session, and use the installed Uroboros commands to execute it. A hand-back that changes intended behavior returns to the person.
+Uroboros makes rigorous coding a capability the person can run on their own hardware. Preserve their brief and author the checked contract with executable obligations of both signs. Leave the implementation decisions open as typed AST cells. The local line fills those cells and follows Detective over Wesker to a certificate or a qualified hand-back. Use the [coding runbook](docs/CODING.md).

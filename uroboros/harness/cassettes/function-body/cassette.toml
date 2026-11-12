@@ -1,4 +1,4 @@
-# function-body — the one call in which a model writes: it types one contracted function's body, once.
+# function-body — historical cassette for grammar-constrained Python source.
 #
 # CORRECTNESS-shaped, like every model call in the harness: a typed hole under decode-time constraint (format = the
 # schema), never free text. The founder, 2026-10-05: the writing call falls «under the same global ruleset, of which
@@ -22,7 +22,7 @@
 # module before the lead's audit.
 
 id = "function-body"
-label = "Function body: type one contracted function's body into its stub, once; Detective decides what it is"
+label = "Historical function-body cassette for constrained source"
 category = "correctness"
 warrant = "downstream: a typed body is only a candidate inside its contract's scope (decisions.code_pattern); Detective measures what it does, and the lead's audit admits it"
 discharge = "downstream"

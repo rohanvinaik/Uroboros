@@ -1,4 +1,4 @@
-"""Contract authoring, bounded model calls, and Detective verification."""
+"""Typed AST fills, deterministic rendering, and the local Detective-over-Wesker loop."""
 
 from .cassette import Cassette, find_cassette, list_cassettes, load_cassette
 from .run import Outcome, invoke, plan

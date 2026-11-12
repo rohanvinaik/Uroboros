@@ -1,4 +1,4 @@
-"""uroboros-cassette — the human surface of the dyad's hardware. Stdlib argparse only.
+"""uroboros-cassette — inspect and run a declared model operation.
 
     uroboros-cassette list [--json]                 the cassettes on the library path
     uroboros-cassette show ID                       one cassette: seat, warrant, slots, gate

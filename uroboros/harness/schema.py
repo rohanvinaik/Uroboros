@@ -1,4 +1,4 @@
-"""uroboros.harness.schema — the typed hole, built and checked. Pure.
+"""Build and check the schemas for declared cassette operations.
 
 A correctness-shaped call is a JSON schema the model fills by SELECTING. This module
 builds that schema from a cassette's declared slots plus their sourced vocabularies,

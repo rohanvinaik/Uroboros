@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The ONE model call — typed input synthesis.
+"""Typed test-input synthesis for the original uroboros-crawl workflow.
 
 Uroboros' cycle owns control flow; the model is a PURE FUNCTION invoked at exactly
 one branch: choosing test inputs to reach an un-exercised branch. It fills a typed

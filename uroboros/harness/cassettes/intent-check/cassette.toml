@@ -1,4 +1,4 @@
-# intent-check — the admission seat's one judgment (docs/theory/SEPARATION_OF_AUTHORITY.md §2; the founder,
+# intent-check — an optional review of pinned records (the founder,
 # 2026-10-07, separation [8]): one call per function reads its intent tests and docstring beside the records Detective
 # pinned for it, and gives each record agrees, contradicts (naming the intent test or coverage line) or cannot tell.
 #
@@ -12,7 +12,7 @@
 # under the admission holder's model record (contract.MODELS). The [model] section below serves a standalone run only.
 
 id = "intent-check"
-label = "Admission: each record Detective pinned, checked against the function's stated intent"
+label = "Optional review of Detective pins against stated intent"
 category = "correctness"
 warrant = "judgment: the holder is granted admission after its qualification (R9); every contradiction goes to the lead or Sol, and every cannot-tell to the founder"
 discharge = "downstream"

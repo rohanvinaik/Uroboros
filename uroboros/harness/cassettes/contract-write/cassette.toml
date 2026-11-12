@@ -1,11 +1,12 @@
-# contract-write — the contract writer's seat (docs/theory/SEPARATION_OF_AUTHORITY.md R2): one call reads the
+# contract-write — the contract writer's seat (docs/CODING.md, Author the form): one call reads the
 # founder's instructions for one module, with its imports and globals as they stand, and writes the module's contract:
 # the obligations (the docstrings at two levels, each function's intent tests of both signs with their coverage lines,
 # each object's value as intent, the globals) and the empty structure that holds the cells, functions bottom-up.
 #
 # CORRECTNESS-shaped: one slot, `contract`, held at decode time to the seat's form (contract.contract_schema, supplied
 # at run time): each function at its scope's top naming in `combines` the functions it combines, its coverage as two
-# lists (`covers`, `never`), every signature and body null: the contract writer never writes code (R1). The stored
+# lists (`covers`, `never`), with null outer signatures and bodies. An optional template can fix the AST structure
+# settled by intent and declare the open cells for the local model. The stored
 # contract is built from the reply (contract.seat_contract: the nesting from the names, the two lists merged; the
 # founder, 2026-10-07). What neither reads, contract.seat_verdict reads after: the contract's own verdict, the
 # module's path, and the imports and globals it must keep. A null contract is an abstention: the instructions do not
@@ -24,9 +25,9 @@
 # read by him.
 
 id = "contract-write"
-label = "Contract writer: the founder's instructions for one module, written as its contract"
+label = "Contract author: formalize the person's intent for one module"
 category = "correctness"
-warrant = "check: contract.seat_verdict re-verifies the contract's form, its module and what it keeps; what it means is measured per role (R9) and read by the founder"
+warrant = "check: seating verifies the contract form, module identity, and preserved declarations. The person settles intent."
 discharge = "check"
 hand_back = "definition"
 render = "none"

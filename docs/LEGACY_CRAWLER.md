@@ -1,12 +1,12 @@
 > Historical documentation for the input-only refactoring crawler. Use `uroboros-crawl` for this command. For the coding line, see the [README](../README.md).
 
-# Uroboros
+# Original Uroboros crawler
 
-**Point it at a Python codebase and it hands the code back clean — tangled functions split apart, every behaviour pinned under a minimal test suite that fails on any change to the code.**
+The crawler runs Detective on existing Python, derives pins within the measured mutation regime, and reports behavior-preserving seams.
 
 <p align="center">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-3367d6.svg" alt="License: MIT"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-3367d6.svg" alt="Python 3.11+"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-3367d6.svg" alt="Python 3.12+"></a>
 </p>
 
 `Set-and-forget · CPU-only · the model never drives`
@@ -32,7 +32,7 @@ receipt_id                       needs-fixture        5/5     0     0      -
 · candidate-equivalent (Tier-2 flag queue): 9 mutant(s) across 2 fn
 ```
 
-Three functions come back **pinned**: for each, the crawl wrote the minimal pytest suite that kills every killable mutant — every small edit to the code that would change its output. The `kill` column is the receipt (`band`: 30 of 30 mutants caught); `c-eq` counts the survivors no input can distinguish, flagged rather than papered over. `quote` also has a proven **seam**: rerun with `--apply` and it is split into a named helper and a caller — a rewrite applied only because the suite proves behaviour survived it. The suite written *before* the split still passes after it; that green run is the proof, not a claim. And `receipt_id` is handed back instead of pinned: it reads the wall clock, so any golden test of its output is green now and red a second later. Uroboros refuses to write a test that rots, and names the remedy.
+Three functions come back **pinned**: for each, the crawler wrote a small pytest suite that kills the mutants classified as killable in that run. The `kill` column is the receipt (`band`: 30 of 30 mutants caught); `c-eq` counts candidate-equivalent survivors for which the search found no distinguishing input. `quote` also has a proven **seam**: rerun with `--apply` and it is split into a named helper and a caller — a rewrite qualified by Detective's preservation check. The suite written *before* the split still passes after it. And `receipt_id` is handed back instead of pinned: it reads the wall clock, so any golden test of its output is green now and red a second later. Uroboros refuses to write a test that rots, and names the remedy.
 
 What lands on disk is ordinary pytest, no runtime dependency on Uroboros:
 
@@ -45,13 +45,13 @@ def test_quote_value_1():
     assert result == 47595
 ```
 
-The functions that most need cleaning are the ones nobody touches, because the only safety net — the tests someone thought to write — checks a handful of cases, and everyone knows it. A mutation-complete suite is a different object: it fails on any change to what the function computes. That turns cleanup from a bet into a mechanical operation, and it turns the suite into a behavioural lockfile — you, a colleague, or a model can rewrite the function freely, and green means identical.
+The functions that most need cleaning often have thin test suites. A mutation-complete suite distinguishes all non-equivalent mutants in its declared regime. A passing suite preserves the tested distinctions, and the crawler checks a proposed split separately with Detective's preservation check.
 
-This is the discipline of provable composition — small pieces, pinned behaviour, tangles split only at proven seams — run as a background process instead of held by hand. [Detective](https://github.com/rohanvinaik/Detective) makes that a command you drive, one function at a time; Uroboros drives it for you, across a whole repository, until there is nothing left to prove. It is the *Structure and Interpretation* method, running itself: deterministic, CPU-only, no model anywhere in the loop that could wander off and rewrite your logic.
+This is the discipline of provable composition — small pieces, pinned behaviour, tangles split only at proven seams — run as a background process instead of held by hand. [Detective](https://github.com/rohanvinaik/Detective) makes that a command you drive, one function at a time; Uroboros drives it for you, across a whole repository, until Detective settles the function or reports a residual. The deterministic loop can run without the model, leaving questions that need a witness open.
 
 ## The model never drives
 
-You can leave Uroboros running on your source because the part that could go wrong has no room to. The loop is deterministic; a small local model is woken at exactly one step — when reaching a branch needs one specific input value — and it does nothing else. It never writes code, never chooses what runs next, never sees your source as something to rewrite. It selects values into a per-function JSON schema mined from the branches themselves, with arity and types structurally locked; the harness writes the call syntax. There is no driver's seat for it to climb into.
+The crawler's deterministic loop calls a small local model when a branch needs an input value. The model selects values into a per-function JSON schema mined from the branches. The harness fixes arity and types, writes the call syntax, and drives Detective.
 
 That one job sits on a difficulty ladder, which is why a 4B model on a laptop is enough — it beat a 36B on this task, per token:
 
@@ -72,7 +72,7 @@ Everything is pinned or refactored, except a short review list — each entry a 
 | **needs a FIXTURE** (impure) | reads the clock / filesystem / env — no pin here holds | supply `--clock`, a tmp fixture, or write it by hand |
 | **needs INPUT** | it needs a captured object or a value only you know | hand it one real call |
 | **unclosed pure gap** | a real branch no tried input reached | glance at the one line |
-| *(candidate-equivalent)* | changes no input can distinguish — the honest end state | optional `detective flag` |
+| *(candidate-equivalent)* | the search found no distinguishing input in this run | review the evidence before any `detective flag` |
 
 ## Run it
 
@@ -96,7 +96,7 @@ ollama pull qwen3:4b-instruct-2507-q4_K_M
 | `uroboros-crawl file.py --no-model` | test files | deterministic only — leave gaps that need an input unclosed |
 | `uroboros-crawl --check` | nothing | dependency preflight and exit |
 
-Without `--apply`, source is never rewritten — Uroboros writes tests and reports the splits it would make. Requires Python 3.11+. Absent Ollama or a pulled model, the crawl runs deterministically and leaves input-needing gaps unclosed.
+Without `--apply`, source is never rewritten — Uroboros writes tests and reports the splits it would make. The current package requires Python 3.12+. Absent Ollama or a pulled model, the crawl runs deterministically and leaves input-needing gaps unclosed.
 
 ## Where it stops
 
@@ -112,4 +112,4 @@ Orientation for a contributor: [`AGENTS.md`](../AGENTS.md) and [`LEGACY_ARCHITEC
 
 ---
 
-**Uroboros** — the serpent eating its own tail. It grinds the same loop over its own output until what survives is clean. The engine underneath is [Detective](https://github.com/rohanvinaik/Detective), over [Wesker](https://github.com/rohanvinaik/Wesker). MIT — Rohan Vinaik.
+The crawler runs [Detective](https://github.com/rohanvinaik/Detective) over [Wesker](https://github.com/rohanvinaik/Wesker). MIT — Rohan Vinaik.

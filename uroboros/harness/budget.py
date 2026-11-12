@@ -1,4 +1,4 @@
-"""Contract-derived write budgets, recovered from the U05–U07 build units."""
+"""Score the structured contract and size local AST replies from measured calls."""
 
 import ast
 import math

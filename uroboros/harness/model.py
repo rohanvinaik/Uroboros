@@ -1,10 +1,8 @@
 """uroboros.harness.model — the one wire to a language model. Stdlib only.
 
-Two shapes, one behaviour. ``openai`` is the OpenAI-compatible ``/v1`` API that every
-current local server exposes, so the ENGINE is an operator's choice and no cassette
-has to know which one is running — the same split the archive cartridge makes for
-storage. ``ollama`` is Ollama's native ``/api/chat``, kept for the knobs the ``/v1``
-shape has no field for (``num_ctx``, ``keep_alive``, ``think``).
+The harness supports Ollama's native ``/api/chat`` and the OpenAI-compatible ``/v1`` wire for local servers.
+The configured server enforces the reply schema during decoding. The native Ollama wire also carries
+the adaptive ``num_ctx`` reservation, ``keep_alive``, and ``think``.
 
 Either way the request is built from what the cassette declares plus the typed hole
 the hardware computed, and the reply comes back verbatim with its telemetry. There is

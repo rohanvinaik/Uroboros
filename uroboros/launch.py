@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The launcher — constrained output, the same discipline as the rest of Uroboros.
+"""Interactive launcher for the original uroboros-crawl workflow.
 
 A thin interactive loop. Each turn, the user's message goes to a small local model
 whose output is CONSTRAINED to a typed schema (Ollama `format=<schema>`, `think:false`):

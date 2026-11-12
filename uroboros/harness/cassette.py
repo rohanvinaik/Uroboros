@@ -1,20 +1,15 @@
 """uroboros.harness.cassette — the operation cartridge.
 
-Ported from Peitho's cassette pattern (``~/Projects/Peitho/src/peitho/cassette.py``)
-and organised like Regenesis's universes (a library of self-describing directories
-on a search path). **The harness core carries no operation.** Every operation that
-needs a language model is a *cassette*: a directory that declares, in data, the seat
-the model takes for that task — its content category, the warrant and how it is
-discharged, the typed slots
-and where their vocabularies come from, the model and its decode options, the prompt
-frame, the guards, and what an abstention hands back. Swapping the cassette swaps
-the operation; the hardware does not change.
+A cassette declares one model operation in data. It supplies the typed slots, decode settings, evidence
+projection, and hand-back. The local coding line uses cassettes for scoped operations such as witness
+selection and receipt classification. The AST writing schema is generated directly from the function's
+contract by ``contract.call_schema``.
 
     $UROBOROS_CASSETTE_PATH   extra libraries, colon-separated, searched first
                               (default: only the bundled ``cassettes/``)
 
     <library>/<id>/
-      cassette.toml     the cartridge declares itself (see cassettes/README.md)
+      cassette.toml     the cartridge declares the operation and schema
       prompt.md         the prompt frame, with {evidence} placeholders
       vocab/<slot>.txt  a file-sourced closed vocabulary, one value per line
 

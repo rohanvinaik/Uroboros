@@ -224,3 +224,56 @@ def test_production_line_preserves_escalated_function_and_replays_transport_once
     assert escalation["contract_entry"]["function"] == "worker"
     assert escalation["receivers"] == ["founder"]
     assert json.loads((out / "line.json").read_text()) == result
+
+
+def test_reissue_keeps_detective_observations_and_prioritizes_the_failing_test_owner(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    from uroboros.harness import admission, contract, line, run
+
+    def function(name, children):
+        return {
+            "function": name,
+            "functions": children,
+            "doc": {"prose": "Return a value.", "operations": []},
+            "signature": {"args": {}},
+            "code": [{"_type": "Return", "value": {"_type": "Constant", "value": 0}}],
+            "intent_test": {"source": f"def test_{name}(): pass"},
+        }
+
+    source = tmp_path / "input.json"
+    source.write_text(json.dumps({"path": "unit.py", "body": [function("total", [function("helper", [])])]}))
+    failure = {"failing_tests": ["tests/test_unit.py::test_total"]}
+    decision = {"code": "fix_failing_test"}
+    targets = ["total.helper", "total"]
+
+    def play(path, folder, model, **options):
+        folder.mkdir()
+        (folder / "contract.json").write_text(path.read_text())
+        if options["repairs"]:
+            assert set(options["repairs"]) == {"total"}
+            receipt = options["repairs"]["total"]
+            assert receipt["judgment"] == "code_wrong"
+            assert receipt["decision"] == decision
+            assert receipt["observations"] == failure
+            assert receipt["prior_code"] == "def total():\n    return 0"
+            assert "open AST cells" in receipt["instruction"]
+            (folder / "handbacks.jsonl").write_text("")
+            return {"done": True}
+        handbacks = [
+            {"function": target, "ending": "audit:fix_failing_test", "decision": decision, "doctor": None}
+            for target in targets
+        ]
+        (folder / "handbacks.jsonl").write_text("".join(json.dumps(row) + "\n" for row in handbacks))
+        return {"done": False, "detective": {"functions": {target: {"runs": [failure]} for target in targets}}}
+
+    monkeypatch.setattr(contract, "play", play)
+    monkeypatch.setattr(contract, "reissue", lambda unit, _target: ("unwritten", unit, {}))
+    monkeypatch.setattr(admission, "admit", lambda *_args: {"outcome": "checked"})
+    monkeypatch.setattr(run, "invoke", lambda *_args, **_kwargs: SimpleNamespace(
+        status="admitted", values={"decision": "code_wrong"}, to_dict=lambda: {},
+    ))
+    result = line.execute_line(source, tmp_path / "line", "qwen3.5-4b", "local", 2)
+    assert result["outcome"] == "done"
+    assert [row["function"] for row in result["rounds"]] == ["total"]

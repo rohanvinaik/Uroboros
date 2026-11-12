@@ -1,9 +1,8 @@
 """uroboros.harness.daemon — the Detective phase: Detective's own record, followed by stage.
 
-The design is ``docs/theory/THE_CODING_LINE.md``, step 6, and ``docs/builds/2026-10-08/WIRING.md``, W3 to W5. Detective
-drives everything after the code is written; the harness is glue and decides nothing Detective decides. Once its module
-and its intent tests are written, each command runs through ``detective.run`` with ``--json``, and the decision record
-that payload carries is what the harness follows (``decisions.detective_move``), in the stage it is in:
+Detective over Wesker owns the measurement and the next action. Once the checked AST renders into a module and
+its intent tests, the harness runs each command through ``detective.run`` with ``--json``. It follows the returned
+decision record for the current stage through ``decisions.detective_move``. See ``docs/ARCHITECTURE.md``.
 
 - ``folder``: the contract's typed order's first command, ``regime``, once. Its record names Detective's own repair
   (``regime --migrate``), whose record is read next, until the folder is clean.
@@ -29,8 +28,7 @@ hand-back, and never ends, gates or changes anything. A function's step bound (`
 across its setup and its run, and ends it ``budget`` when spent; doctor's read and the flags are not counted.
 
 Every command is admitted by ``decisions.daemon_argv`` and run over both signs (``decisions.two_sign_argv``): every
-contract's intent tests carry both (the founder, 2026-10-06); ``detective.run`` adds ``--json``. Nothing here admits
-code; the lead's audit does.
+contract's intent tests carry both (the founder, 2026-10-06); ``detective.run`` adds ``--json``. Placement consumes the terminal evidence through ``admission.admit``.
 
 Each function's result holds every run (its argv, its exit code, its seconds, the stage it was read in, Detective's
 decision record and the move the harness made of it), its ending, its route (``done`` or ``handback``), its class

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "uroboros-refactor"
 version = "0.1.0"
-description = "Run Python contracts with small local models and verify the result with Detective."
+description = "Autonomous local Python coding from typed contracts. Detective over Wesker drives verification and repair toward mutant-complete specification."
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "Rohan Vinaik" }]

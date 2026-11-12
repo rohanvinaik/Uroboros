@@ -1,4 +1,4 @@
-"""uroboros.harness.run — the inverted-control loop. The model owns one call; this owns the rest.
+"""Execute one declared cassette operation and return its typed outcome.
 
     plan()    everything decided BEFORE a model is touched: the gate, the invocation
               check, the resolved slots, the exact request. ``--dry-run`` prints it.

@@ -1,11 +1,8 @@
-"""uroboros.harness.decisions — every decision the harness makes, pure and pinned.
+"""Pure transitions and validation for typed Uroboros records.
 
-Each function is TOTAL over plain data (str / bool / int / list / dict), returns a
-NAMED CODE wherever two outcomes need different remedies (``docs/theory/THE_DYAD.md``
-Law 10), and takes its parameters positionally — no ``*`` — so Detective's
-``--input`` synthesis can reach every branch. The impure shell (``cassette``,
-``model``, ``run``, ``cli``) computes the plain inputs and dispatches on the codes;
-it decides nothing itself.
+Detective's structured decision supplies the next verification step. The harness checks its stage, target,
+and permitted action before executing it. Named outcomes preserve distinct remedies. The same typed data
+defines the model's available choices and the admission check for its reply. See docs/ARCHITECTURE.md.
 """
 
 from __future__ import annotations
@@ -24,7 +21,7 @@ CATEGORIES = ("generative", "correctness")
 # its unit's shape contract (``code_pattern``): the ``function-body`` cassette's, which nothing plays since the
 # contract harness writes code (2026-10-06). ``contract`` is a module's whole contract, held to the form the caller
 # supplies at run time (``contract.contract_schema``): the ``contract-write`` cassette's, the contract writer's seat
-# (SEPARATION_OF_AUTHORITY.md R2). ``form`` is any object held so, for a reply whose shape its caller knows only at run
+# (docs/CODING.md, Author the form). ``form`` is any object held so, for a reply whose shape its caller knows only at run
 # time: the ``intent-check`` cassette's, one verdict for each record Detective pinned (the admission seat).
 SLOT_KINDS = ("enum", "enum_list", "bool", "int", "float", "text", "call_objects", "code", "contract", "form")
 
@@ -454,7 +451,7 @@ STYLE_VERBS = ("plan", "parsimony", "survey", "decompose")
 # the flag (Detective issue #115), so the harness adds it.
 TWO_SIGN_VERBS = ("audit", "converge", "decompose", "diagnose")
 # The verbs whose ``--json`` output is one object carrying Detective's decision record (``decision``) or its typed refusal:
-# the harness reads that record, never the printed page (docs/builds/2026-10-08/WIRING.md, W2).
+# the harness reads that record, never the printed page (docs/ARCHITECTURE.md, Execution).
 JSON_VERBS = ("regime", "audit", "converge", "doctor", "flag")
 _PLACEHOLDER = re.compile(r"<[^<>\s]+>")
 
@@ -603,7 +600,7 @@ def possession_exit(classes: list) -> int:
     return 1 if "handed_back" in classes else 0
 
 
-# The receiver's decision on a hand-back: one typed record of three values (SEPARATION_OF_AUTHORITY.md R7; the
+# The receiver's decision on a hand-back: one typed record of three values (docs/CODING.md, Read the result and admit it; the
 # founder, 2026-10-07). contract_wrong, any fault in the contract, its intent tests among them, the contract writer
 # revises; code_wrong goes back to a code writer as a fresh call for that one function (contract.reissue);
 # machine_wrong, whoever holds admission puts right, then plays the unit again.
@@ -617,7 +614,7 @@ def handback_receivers(ending: object) -> list:
     (``admission:contradicts``); one the check cannot tell goes to the founder (``admission:cannot_tell``; separation
     [8]); so does an ask the judgment seat could not tell (``judge:cannot_tell``: Detective stopped for values and the
     model had none to give or flag); every other hand-back goes to admission, the authority that types what Detective
-    leaves (SEPARATION_OF_AUTHORITY.md §2). The harness routes, and the receiver decides."""
+    leaves (docs/ARCHITECTURE.md, Authority). The harness routes, and the receiver decides."""
     if ending in ("audit:fix_failing_test", "admission:contradicts"):
         return ["lead", "sol"]
     return ["founder"] if ending in ("admission:cannot_tell", "judge:cannot_tell") else ["admission"]
@@ -787,7 +784,7 @@ def target_signature(stub: str, name: str) -> list | str:
 
 # ── The coding line: Detective's decision record, followed by stage ────────────────────────────────────────────────
 #
-# The harness follows Detective's own decisions and decides none of them (docs/theory/THE_CODING_LINE.md, step 6).
+# The harness follows Detective's own decisions and decides none of them (docs/ARCHITECTURE.md, Execution).
 # Detective's ``--json`` carries one decision record per run, ``{"verb", "code", "route", "step", "plan", ...}``. What
 # the harness does with a record depends on the stage it is in: ``folder`` (``regime``, once), ``setup`` (``audit``, on
 # each function) or ``run`` (``converge``, on each function: the only place a function is done). ``detective_move`` is
@@ -1471,7 +1468,7 @@ def receiver_next(decision, current, history, unit_replays, ceiling):
     return "reissue"
 
 
-# ── The Detective phase's readings (docs/builds/2026-10-08/WIRING.md, W3 and W4) ───────────────────────────────────
+# ── The Detective phase's readings (docs/ARCHITECTURE.md, Execution) ───────────────────────────────────
 #
 # What the driver reads from one run's ``--json`` payload, the class of a finished run, and what the judgment seat is
 # shown and asked. All are total over ``str`` / ``bool`` / ``int`` / ``list`` / ``dict``.
@@ -1645,7 +1642,7 @@ def run_class(route: str, ending: str, exit_code: object) -> str:
     return "handed_back" if held == "clean" else held
 
 
-# ── Wesker's categories, read from its source (docs/builds/2026-10-08/B6_wesker_categories.md; WIRING W7) ───────────
+# ── Wesker's categories, read from its source (Wesker engine vocabulary) ───────────
 #
 # The contract writer's record carries Wesker's operator categories as data, read from Wesker's own definition and
 # never from a copied table. Wesker's engine.py imports its siblings relatively, so it is read as text: nothing of

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The set-and-forget refactor crawler — the integrated harness.
+"""The original refactoring crawler, available through uroboros-crawl.
 
 Walks a Python file/dir function by function and, per function, drives Detective's
 deterministic loop, invoking a SMALL model only where it is genuinely needed, and

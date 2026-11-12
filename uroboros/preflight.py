@@ -1,6 +1,6 @@
-"""Preflight — verify the serpent can eat.
+"""Dependency preflight for the original uroboros-crawl workflow.
 
-Uroboros has no intelligence of its own. It borrows three things and checks all three
+The crawler relies on three dependencies and checks all three
 are present before it starts to cycle:
   - Detective (the CLI it drives) + Wesker (the mutation engine underneath) — the HARD
     requirement; without them there is nothing to drive.

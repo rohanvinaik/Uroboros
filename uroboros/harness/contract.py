@@ -1,21 +1,24 @@
-"""uroboros.harness.contract — the translation format: a module written as a JSON contract of its syntax tree.
+"""Seat a module's intent contract, fill typed AST cells, and render the checked Python.
 
 The founder's design, 2026-10-06. A module is one JSON contract, complete and machine-readable:
 - the imports at the top, and the global objects declared beside them; anything below refers back to those;
 - then each class and each function, serially. A class is a grouping: its docstring guides a reader and builds
   nothing. An object sits at the level of a function, and records which functions use it.
 
-The contract's writer fills the intent and nothing else: the docstrings (the prose, and the category of each
-operation: Wesker's value, boundary, swap, …), each function's intent tests with the operations they cover, by
-category and range (a minimum, not a complete list), each object's value as intent, and the global objects, whose
-definitions are an iron contract (the founder, 2026-10-06): a call may add a new global it needs, and never
-redefines one. A function's intent tests carry both signs (the founder, 2026-10-06): the tests of what it must do,
-and the negative specification tests of what it must never do, each of those named in the coverage line under
-Wesker's OUTPUT category by the output operator it rules out (``OUTPUT_OPERATORS``). The tests are the contract's
-meaning; a docstring is the fallback for what is not provably, definitionally knowable. Every other part is an empty cell that a model fills with Python's own abstract syntax, held to the
-full grammar while it generates (``call_schema``). A cell is filled once and is final; every place that refers to it
-reads the same cell, so separate calls cannot drift. A function's signature is such a cell, the model's call (the
-founder, 2026-10-06): the intent test, written ahead, calls the function, and Detective's run is where the two meet.
+The contract author fixes the module's interfaces, dependencies, and observable obligations. Intent tests
+encode both signs, including the required behavior and forbidden output changes, and coverage records name
+the relevant Wesker operators. Docstrings carry intent that remains outside the tests. The author can fix
+AST structure that follows from the design and leave named implementation slots for the local model.
+
+``call_schema`` constrains the reply at decode time. An optional ``ast_template`` fixes a scaffold and declares
+finite ``choices`` and typed ``holes`` for expressions, statements, or bodies. An untemplated function opens
+its signature and body under the full AST grammar. The contract's ``syntax`` limits apply to the generated
+subtrees. ``fill`` checks the same grammar before admitting a reply and the harness renders source itself.
+References read the same filled cells throughout the module.
+
+The local writer answers one bounded request. ``call_payload`` records the contract score, reply form,
+measured budget or profile fallback, and context reservation. Detective over Wesker drives each verification
+step after rendering. The resulting certificate or typed hand-back carries the evidence forward.
 
 A model call is one function. It sees that function's subtree, everything below it and already written, and its
 lineage, everything directly above it up to the file's imports and globals; never its siblings (``call_context``).
@@ -61,7 +64,11 @@ The contract, field by field (``FORMAT``)::
                                            "range": "..."}]},                            # OUTPUT: what it must never do
                "objects": [<object>, ...], "functions": [<function>, ...],             # below it
                "signature": null | {"args": <arguments>, "returns": <expr> | null, "decorator_list": [<expr>, ...]},
-               "code": null | [<stmt>, ...]}                                             # signature, code: cells
+               "code": null | [<stmt>, ...],                                             # signature, code: cells
+               "ast_template": {"signature": <scaffold>, "code": <scaffold>,
+                                "choices": {<slot>: {<label>: <value>}},
+                                "holes": {<slot>: "expr" | "stmt" | "body"},
+                                "syntax": {<family>: [<constructor or operator>, ...]}}}
 
 A syntax-tree node is JSON: ``{"_type": "If", "test": {...}, "body": [...], "orelse": [...]}``; a product (``arguments``,
 ``arg``, ``keyword``, ``alias``, ``withitem``, ``comprehension``, ``match_case``) has no ``_type``; an operator or a
@@ -248,7 +255,7 @@ WESKER: dict = {
 }
 
 # The negative specification's vocabulary: Wesker's OUTPUT category, the output operators μ⁻ of Detective's
-# negative-specification paper (docs/theory/NEGATIVE_SPECIFICATION.md, Def. 11.8), each with the MUST-NOT it rules out,
+# negative-specification paper (Detective's NEGATIVE_SPECIFICATION.md, Def. 11.8), each with the MUST-NOT it rules out,
 # in the paper's words. A coverage line's OUTPUT entry names one: the negative half of the intent tests, «a positive
 # and negative intent contract for what it should and should not do» (the founder, 2026-10-06). The paper's family is
 # the design; Wesker builds, and Detective's two-sign run measures, nine of these keys as twelve sub-modes (traced
@@ -861,7 +868,7 @@ def contract_verdict(contract: object) -> str:
 
 
 def contract_schema() -> dict:
-    """The JSON schema of the contract writer's reply, the seat's form (pure; SEPARATION_OF_AUTHORITY.md R2): the
+    """The JSON schema of the contract writer's reply, the seat's form (pure; docs/CODING.md, Author the form): the
     obligations it writes (the module's docstring; each function's docstring at two levels, its prose and each
     operation's category; each function's intent tests of both signs; each object's value as intent; the globals) and
     the empty structure, every signature and body ``null`` for the code writer. Two parts are asked as the writer knows
@@ -1351,10 +1358,12 @@ def _required_object(properties: dict) -> dict:
 
 
 def call_schema(contract: dict, qualname: str) -> dict | str:
-    """The JSON schema one call's answer is held to while the model generates (pure): the function's empty cells
-    (its signature, its code), imports for the file, new global objects for the file, and the definitions of the
-    object cells below the function it may still fill, all over Python's full grammar, with imports kept out of
-    bodies. Codes: a contract verdict · ``unknown_target``."""
+    """Derive the decode-time schema for the function's open cells.
+
+    A template supplies finite choices and typed subtrees over its allowed constructors. An untemplated call
+    opens the signature, body, imports and available object cells over the supported AST grammar.
+    Codes: a contract verdict · ``unknown_target``.
+    """
     verdict = contract_verdict(contract)
     if verdict != "ok":
         return verdict
@@ -1489,7 +1498,7 @@ def fill(contract: dict, qualname: str, reply: object) -> tuple:
     return _admitted(contract, new)
 
 
-# ── Admission of a whole change, before any cell becomes final (SEPARATION_OF_AUTHORITY.md R6) ───────────────────────
+# ── Admission of a whole change, before any cell becomes final (docs/ARCHITECTURE.md, Execution) ───────────────────────
 #
 # A reply is checked as the change it makes to the whole contract, statically: nothing is imported or run (the
 # founder, 2026-10-07: Detective's first run is the load check). Construction: the module, with a stub in every cell
@@ -1852,7 +1861,7 @@ def write_asked_test(contract: dict, tests: list, out_dir: Path) -> str:
     return ""
 
 
-# ── Hand-backs and the receiver's decision (SEPARATION_OF_AUTHORITY.md R7) ─────────────────────────────────────────────
+# ── Hand-backs and the receiver's decision (docs/CODING.md, Read the result and admit it) ─────────────────────────────────────────────
 #
 # Each ending the Detective phase hands back is written as a typed record routed to its receivers, with its evidence
 # and the values the receiver's decision takes; the harness routes and decides nothing. A receiver that finds the code
@@ -2031,7 +2040,7 @@ def revision(current: dict, written: dict) -> tuple:
     return ("unchanged" if new is current else "revised"), new, done
 
 
-# ── The contract writer's seat (SEPARATION_OF_AUTHORITY.md R2) ─────────────────────────────────────────────────────────
+# ── The contract writer's seat (docs/CODING.md, Author the form) ─────────────────────────────────────────────────────────
 #
 # One call reads the founder's instructions for a module, with its imports and globals as they stand, and writes the
 # module's contract, held at decode time to its form (``contract_schema``, the ``contract-write`` cassette's one slot).
@@ -2057,7 +2066,8 @@ def seat_verdict(written: object, path: str, imports: list, objects: list) -> st
     was given to keep that is not the module's own (``_given_verdict``: its caller's to fix) · the contract's own
     verdict (``contract_verdict``) · ``moved`` (another module's path) · ``dropped_import:<i>`` (an import the module
     holds is gone) · ``dropped_object:<name>`` (a global the module holds is gone, or its intent changed) ·
-    ``filled:<qualname>`` (a cell the code writer fills is written: the contract writer never writes code)."""
+    ``filled:<qualname>`` (an outer implementation cell is already filled). A template can fix the AST scaffold
+    and declare the remaining local implementation slots."""
     given = _given_verdict(imports, objects)
     if given != "ok":
         return given

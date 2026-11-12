@@ -1,13 +1,12 @@
 > Historical architecture of `uroboros-crawl`. For the coding line, see [Architecture](ARCHITECTURE.md).
 
-# Architecture
+# Original crawler architecture
 
-How Uroboros drives Detective, and how the harness is built. Read this to spin up on the
-intended design; every symbol named here is real.
+How the original `uroboros-crawl` command drives Detective on existing source.
 
 ## The one idea
 
-**Uroboros owns control flow. The model is a pure function at exactly one step.** A big model
+**The crawler controls the loop. Its model supplies typed test inputs.** A big model
 handed a shell and a loop reads the source and gets clever; a big model asked only to *select
 test inputs into a typed schema* cannot. So there is no driver's seat: a deterministic loop
 reads Detective's `--json` state and computes the next command; the model is woken only to
